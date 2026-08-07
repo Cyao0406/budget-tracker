@@ -9,6 +9,7 @@
   };
   var WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
   var SERIES_SLOTS = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6', '--series-7', '--series-8'];
+  var PASTEL_SLOTS = ['--pastel-1', '--pastel-2', '--pastel-3', '--pastel-4', '--pastel-5', '--pastel-6', '--pastel-7', '--pastel-8'];
 
   var DEFAULT_EXPENSE_CATS = [
     { name: '餐飲', colorVar: '--series-1', keywords: ['早餐', '午餐', '晚餐', '消夜', '宵夜', '咖啡', '飲料', '超商', '全家', '7-11', '711', '7-eleven', '萊爾富', 'ok超商', '餐廳', '小吃', '火鍋', '便當', '飲品', '手搖', '星巴克', '麥當勞', '肯德基', '拉麵', '牛肉麵', '早午餐', '外送', 'foodpanda', 'ubereats'] },
@@ -403,6 +404,11 @@
   function closeEditRecord() { els.editRecordSheet.classList.add('hidden'); state.editingRecordId = null; }
 
   // ---------- settings: category management ----------
+  function swatchGroupHtml(slots, selectedColorVar) {
+    return slots.map(function (v) {
+      return '<button type="button" class="color-swatch' + (v === selectedColorVar ? ' selected' : '') + '" data-color="' + v + '" style="background:var(' + v + ')" aria-label="選擇這個顏色"></button>';
+    }).join('');
+  }
   function renderCategoryEditList() {
     var cats = catsOfType(state.editingCategoryContext);
     els.categoryEditList.innerHTML = '';
@@ -416,9 +422,10 @@
           '<button type="button" class="del-cat-btn">刪除</button>' +
         '</div>' +
         '<div class="color-swatch-row hidden">' +
-          SERIES_SLOTS.map(function (v) {
-            return '<button type="button" class="color-swatch' + (v === c.colorVar ? ' selected' : '') + '" data-color="' + v + '" style="background:var(' + v + ')" aria-label="選擇這個顏色"></button>';
-          }).join('') +
+          '<p class="swatch-group-label">飽和色</p>' +
+          '<div class="swatch-group">' + swatchGroupHtml(SERIES_SLOTS, c.colorVar) + '</div>' +
+          '<p class="swatch-group-label">淺色</p>' +
+          '<div class="swatch-group">' + swatchGroupHtml(PASTEL_SLOTS, c.colorVar) + '</div>' +
         '</div>' +
         '<p class="kw-label">自動分類關鍵字（用逗號分隔）</p>' +
         '<textarea>' + escapeHtml(c.keywords.join('、')) + '</textarea>';
