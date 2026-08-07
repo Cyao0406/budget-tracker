@@ -511,22 +511,83 @@
     out.push(cur);
     return out;
   }
-  function importCsv(text) {
-    var lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(function (l) { return l.trim(); });
-    if (!lines.length) return 0;
+  function findOrCreateCategoryByName(type, name) {
+    var cat = state.categories.find(function (c) { return c.type === type && c.name === name; });
+    if (!cat) {
+      cat = { id: uid(), type: type, name: name || (type === 'expense' ? '其他' : '其他收入'), colorVar: nextColorVar(type), keywords: [], fallback: false };
+      state.categories.push(cat);
+    }
+    return cat;
+  }
+  function normalizeImportDate(str) {
+    str = (str || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    var m = str.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    if (m) return m[1] + '-' + pad2(Number(m[2])) + '-' + pad2(Number(m[3]));
+    return null;
+  }
+  function importOwnFormatCsv(lines) {
     var count = 0;
     for (var i = 1; i < lines.length; i++) {
       var cols = parseCsvLine(lines[i]);
-      var date = cols[0], type = cols[1], catName = cols[2], amount = parseFloat(cols[3]), note = cols[4] || '';
+      var date = normalizeImportDate(cols[0]);
+      var type = cols[1], catName = cols[2], amount = parseFloat(cols[3]), note = cols[4] || '';
       if (!date || (type !== 'expense' && type !== 'income') || isNaN(amount)) continue;
-      var cat = state.categories.find(function (c) { return c.type === type && c.name === catName; });
-      if (!cat) {
-        cat = { id: uid(), type: type, name: catName || (type === 'expense' ? '其他' : '其他收入'), colorVar: nextColorVar(type), keywords: [], fallback: false };
-        state.categories.push(cat);
-      }
+      var cat = findOrCreateCategoryByName(type, catName);
       state.records.push({ id: uid(), date: date, type: type, categoryId: cat.id, amount: amount, note: note, createdAt: Date.now() });
       count++;
     }
+    return count;
+  }
+  // "MoneyNote" app export: multiple #SECTION blocks in one file. We only need
+  // #DAILY_DATAS (the transactions) and #CATEGORIES (numeric categoryId -> name/type).
+  function importMoneyNoteCsv(lines) {
+    var dailyStart = -1, catStart = -1;
+    lines.forEach(function (line, idx) {
+      var t = line.trim();
+      if (t === '#DAILY_DATAS') dailyStart = idx;
+      else if (t === '#CATEGORIES') catStart = idx;
+    });
+    var categoryMap = {};
+    if (catStart >= 0) {
+      for (var j = catStart + 2; j < lines.length; j++) {
+        var cline = lines[j];
+        if (!cline || !cline.trim() || cline.trim().charAt(0) === '#') break;
+        var ccols = parseCsvLine(cline);
+        if (!ccols[0]) continue;
+        categoryMap[ccols[0]] = { name: ccols[1], type: ccols[4] === '1' ? 'income' : 'expense' };
+      }
+    }
+    var count = 0;
+    if (dailyStart >= 0) {
+      for (var k = dailyStart + 2; k < lines.length; k++) {
+        var dline = lines[k];
+        if (!dline || !dline.trim() || dline.trim().charAt(0) === '#') break;
+        var dcols = parseCsvLine(dline);
+        var date = normalizeImportDate(dcols[0]);
+        var amount = parseFloat(dcols[1]);
+        var typeCode = dcols[4];
+        if (!date || isNaN(amount) || (typeCode !== '0' && typeCode !== '1')) continue;
+        var type = typeCode === '1' ? 'income' : 'expense';
+        var info = categoryMap[dcols[3]];
+        var cat = findOrCreateCategoryByName(type, info ? info.name : null);
+        var createdAtMs = Date.parse(dcols[5]);
+        state.records.push({
+          id: uid(), date: date, type: type, categoryId: cat.id, amount: amount,
+          note: (dcols[2] || '').replace(/\\n/g, ' ').trim(),
+          createdAt: isNaN(createdAtMs) ? Date.now() : createdAtMs
+        });
+        count++;
+      }
+    }
+    return count;
+  }
+  function importCsv(text) {
+    var normalized = text.replace(/^﻿/, '');
+    var lines = normalized.split(/\r?\n/);
+    var count = /^#DAILY_DATAS\s*$/m.test(normalized)
+      ? importMoneyNoteCsv(lines)
+      : importOwnFormatCsv(lines.filter(function (l) { return l.trim(); }));
     saveCategories(); saveRecords();
     return count;
   }
