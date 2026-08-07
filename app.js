@@ -1,0 +1,750 @@
+(function () {
+  'use strict';
+
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var STORAGE = {
+    records: 'budgetapp.records',
+    categories: 'budgetapp.categories',
+    theme: 'budgetapp.theme'
+  };
+  var WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
+  var SERIES_SLOTS = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6', '--series-7', '--series-8'];
+
+  var DEFAULT_EXPENSE_CATS = [
+    { name: '餐飲', colorVar: '--series-1', keywords: ['早餐', '午餐', '晚餐', '消夜', '宵夜', '咖啡', '飲料', '超商', '全家', '7-11', '711', '7-eleven', '萊爾富', 'ok超商', '餐廳', '小吃', '火鍋', '便當', '飲品', '手搖', '星巴克', '麥當勞', '肯德基', '拉麵', '牛肉麵', '早午餐', '外送', 'foodpanda', 'ubereats'] },
+    { name: '交通', colorVar: '--series-2', keywords: ['捷運', '公車', '計程車', 'uber', '加油', '停車', '高鐵', '台鐵', '悠遊卡', '機車', '油錢', '過路費', '停車費', '火車', '客運'] },
+    { name: '購物', colorVar: '--series-3', keywords: ['網購', '蝦皮', 'momo', '衣服', '鞋子', '日用品', '大賣場', 'costco', '好市多', '家樂福', '全聯', '寶雅', '無印良品', 'ikea', '購物'] },
+    { name: '娛樂', colorVar: '--series-4', keywords: ['電影', '遊戲', 'ktv', '唱歌', '旅遊', '訂閱', 'netflix', 'spotify', 'disney', '展覽', '演唱會'] },
+    { name: '居家', colorVar: '--series-5', keywords: ['房租', '水電', '瓦斯', '網路費', '管理費', '家具', '電費', '水費', '房貸'] },
+    { name: '醫療', colorVar: '--series-6', keywords: ['藥局', '醫院', '診所', '健保', '掛號費', '牙醫', '眼科'] },
+    { name: '教育', colorVar: '--series-7', keywords: ['學費', '書籍', '課程', '補習', '文具', '教材'] },
+    { name: '其他', colorVar: '--series-8', keywords: [], fallback: true }
+  ];
+  var DEFAULT_INCOME_CATS = [
+    { name: '薪資', colorVar: '--series-1', keywords: ['薪水', '薪資', '工資'] },
+    { name: '獎金', colorVar: '--series-2', keywords: ['獎金', '紅包', '分紅'] },
+    { name: '投資', colorVar: '--series-3', keywords: ['股息', '配息', '利息', '投資', '股票'] },
+    { name: '其他收入', colorVar: '--series-4', keywords: [], fallback: true }
+  ];
+
+  // ---------- utils ----------
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function toKey(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function fromKey(key) { var p = key.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); }
+  function addDays(d, n) { var r = new Date(d); r.setDate(r.getDate() + n); return r; }
+  function addMonths(d, n) { var r = new Date(d); r.setMonth(r.getMonth() + n); return r; }
+  function startOfWeek(d) { var r = new Date(d); r.setDate(r.getDate() - r.getDay()); r.setHours(0, 0, 0, 0); return r; }
+  function endOfWeek(d) { return addDays(startOfWeek(d), 6); }
+  function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
+  function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
+  function formatMoney(n) {
+    var sign = n < 0 ? '-' : '';
+    return sign + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
+  }
+  function shortDate(d) { return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()); }
+
+  // ---------- state ----------
+  var state = {
+    records: [],
+    categories: [],
+    selectedDate: new Date(),
+    period: 'day',
+    addType: 'expense',
+    chartType: 'expense',
+    tempCategoryOverride: null,
+    manualCategoryTouched: false,
+    calendarMonth: new Date(),
+    editingCategoryContext: 'expense',
+    categoryPickContext: 'quickadd',
+    editingRecordId: null,
+    editRecordType: 'expense'
+  };
+
+  // ---------- storage ----------
+  function loadCategories() {
+    var raw = localStorage.getItem(STORAGE.categories);
+    if (raw) {
+      try { return JSON.parse(raw); } catch (e) { /* fall through to defaults */ }
+    }
+    var cats = [];
+    DEFAULT_EXPENSE_CATS.forEach(function (c) { cats.push(Object.assign({ id: uid(), type: 'expense' }, c)); });
+    DEFAULT_INCOME_CATS.forEach(function (c) { cats.push(Object.assign({ id: uid(), type: 'income' }, c)); });
+    localStorage.setItem(STORAGE.categories, JSON.stringify(cats));
+    return cats;
+  }
+  function saveCategories() { localStorage.setItem(STORAGE.categories, JSON.stringify(state.categories)); }
+  function loadRecords() {
+    var raw = localStorage.getItem(STORAGE.records);
+    if (!raw) return [];
+    try { return JSON.parse(raw); } catch (e) { return []; }
+  }
+  function saveRecords() { localStorage.setItem(STORAGE.records, JSON.stringify(state.records)); }
+
+  function catsOfType(type) { return state.categories.filter(function (c) { return c.type === type; }); }
+  function findCat(id) { return state.categories.find(function (c) { return c.id === id; }); }
+  function fallbackCat(type) {
+    var cats = catsOfType(type);
+    return cats.find(function (c) { return c.fallback; }) || cats[cats.length - 1];
+  }
+  function nextColorVar(type) {
+    var count = catsOfType(type).length;
+    return '--series-' + ((count % 8) + 1);
+  }
+
+  // ---------- parsing & auto categorize ----------
+  function parseQuickInput(text) {
+    text = (text || '').trim();
+    if (!text) return { amount: null, note: '' };
+    var tokens = text.split(/\s+/);
+    var amount = null, amountIdx = -1;
+    for (var i = tokens.length - 1; i >= 0; i--) {
+      var t = tokens[i].replace(/[,$元]/g, '');
+      if (/^\d+(\.\d+)?$/.test(t)) { amount = parseFloat(t); amountIdx = i; break; }
+    }
+    var noteTokens = tokens.slice();
+    if (amountIdx >= 0) noteTokens.splice(amountIdx, 1);
+    return { amount: amount, note: noteTokens.join(' ').trim() };
+  }
+  function guessCategory(note, type) {
+    var cats = catsOfType(type);
+    var lower = (note || '').toLowerCase();
+    for (var i = 0; i < cats.length; i++) {
+      var c = cats[i];
+      if (c.fallback) continue;
+      for (var j = 0; j < c.keywords.length; j++) {
+        var kw = c.keywords[j];
+        if (kw && lower.indexOf(kw.toLowerCase()) !== -1) return c;
+      }
+    }
+    return fallbackCat(type);
+  }
+  function effectiveCategory() {
+    if (state.tempCategoryOverride) {
+      var c = findCat(state.tempCategoryOverride);
+      if (c && c.type === state.addType) return c;
+    }
+    var parsed = parseQuickInput(els.quickInput.value);
+    return guessCategory(parsed.note, state.addType);
+  }
+
+  // ---------- range ----------
+  function getRange() {
+    var d = state.selectedDate;
+    if (state.period === 'day') return [d, d];
+    if (state.period === 'week') return [startOfWeek(d), endOfWeek(d)];
+    return [startOfMonth(d), endOfMonth(d)];
+  }
+  function filteredRecords() {
+    var range = getRange();
+    var startKey = toKey(range[0]), endKey = toKey(range[1]);
+    return state.records.filter(function (r) { return r.date >= startKey && r.date <= endKey; })
+      .sort(function (a, b) { return a.date === b.date ? b.createdAt - a.createdAt : (a.date < b.date ? 1 : -1); });
+  }
+  function periodLabelText() {
+    var d = state.selectedDate;
+    if (state.period === 'day') return isSameDay(d, new Date()) ? '今天 ' + shortDate(d) : shortDate(d) + ' (' + WEEKDAY[d.getDay()] + ')';
+    if (state.period === 'week') { var r = getRange(); return shortDate(r[0]) + ' - ' + shortDate(r[1]); }
+    return d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+  }
+
+  // ---------- DOM refs ----------
+  var els = {};
+  function cacheEls() {
+    ['themeToggleBtn', 'settingsBtn', 'datePrevBtn', 'dateDisplayBtn', 'dateDisplayText', 'dateNextBtn', 'todayBtn',
+      'calendarPopup', 'calPrevMonth', 'calNextMonth', 'calMonthLabel', 'calendarGrid', 'periodTabs',
+      'periodRangeLabel', 'statExpense', 'statIncome', 'statBalance', 'pieChart', 'chartEmpty', 'chartLegend',
+      'quickAddForm', 'quickInput', 'addBtn', 'parsePreview', 'parseAmount', 'parseNote', 'parseCategoryChip',
+      'advancedToggle', 'advancedFields', 'manualCategory', 'manualAmount', 'manualNote',
+      'categoryPickSheet', 'categoryPickBackdrop', 'categoryPickGrid', 'categoryPickClose',
+      'recordsList', 'exportBtn', 'settingsSheet', 'settingsBackdrop', 'settingsCloseBtn', 'categoryEditList',
+      'addCategoryBtn', 'settingsExportBtn', 'importFileInput', 'resetDataBtn', 'toast',
+      'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editCategory',
+      'editAmount', 'editNote', 'editDeleteBtn', 'editSaveBtn'
+    ].forEach(function (id) { els[id] = document.getElementById(id); });
+  }
+
+  // ---------- render: date bar & calendar ----------
+  function renderDateBar() {
+    var d = state.selectedDate;
+    els.dateDisplayText.textContent = isSameDay(d, new Date()) ? '今天' : (shortDate(d) + ' (' + WEEKDAY[d.getDay()] + ')');
+  }
+  function renderCalendar() {
+    var month = state.calendarMonth;
+    els.calMonthLabel.textContent = month.getFullYear() + '年' + (month.getMonth() + 1) + '月';
+    var recordDates = {};
+    state.records.forEach(function (r) { recordDates[r.date] = true; });
+    var gridStart = startOfWeek(startOfMonth(month));
+    els.calendarGrid.innerHTML = '';
+    var today = new Date();
+    for (var i = 0; i < 42; i++) {
+      var d = addDays(gridStart, i);
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = d.getDate();
+      if (d.getMonth() !== month.getMonth()) btn.classList.add('muted');
+      if (isSameDay(d, today)) btn.classList.add('today');
+      if (isSameDay(d, state.selectedDate)) btn.classList.add('selected');
+      if (recordDates[toKey(d)]) btn.classList.add('has-record');
+      btn.addEventListener('click', function (dateClone) {
+        return function () {
+          state.selectedDate = dateClone;
+          els.calendarPopup.classList.add('hidden');
+          renderAll();
+        };
+      }(d));
+      els.calendarGrid.appendChild(btn);
+    }
+  }
+
+  // ---------- render: pie chart ----------
+  function buildDonut(svg, data, total) {
+    svg.innerHTML = '';
+    var cx = 100, cy = 100, r = 70, sw = 28;
+    var circumference = 2 * Math.PI * r;
+    var gap = data.length > 1 ? 3 : 0;
+    var offset = 0;
+    data.forEach(function (seg) {
+      var frac = seg.value / total;
+      var len = Math.max(frac * circumference - gap, 0);
+      var circle = document.createElementNS(SVG_NS, 'circle');
+      circle.setAttribute('cx', cx); circle.setAttribute('cy', cy); circle.setAttribute('r', r);
+      circle.setAttribute('fill', 'none');
+      circle.style.stroke = 'var(' + seg.colorVar + ')';
+      circle.setAttribute('stroke-width', sw);
+      circle.setAttribute('stroke-dasharray', len + ' ' + (circumference - len));
+      circle.setAttribute('stroke-dashoffset', String(-offset));
+      circle.setAttribute('transform', 'rotate(-90 ' + cx + ' ' + cy + ')');
+      svg.appendChild(circle);
+      offset += frac * circumference;
+    });
+    var centerLabel = document.createElementNS(SVG_NS, 'text');
+    centerLabel.setAttribute('x', cx); centerLabel.setAttribute('y', cy - 4);
+    centerLabel.setAttribute('text-anchor', 'middle');
+    centerLabel.style.fill = 'var(--text-muted)';
+    centerLabel.style.font = '12px system-ui, sans-serif';
+    centerLabel.textContent = state.chartType === 'expense' ? '支出' : '收入';
+    svg.appendChild(centerLabel);
+    var centerValue = document.createElementNS(SVG_NS, 'text');
+    centerValue.setAttribute('x', cx); centerValue.setAttribute('y', cy + 16);
+    centerValue.setAttribute('text-anchor', 'middle');
+    centerValue.style.fill = 'var(--text-primary)';
+    centerValue.style.font = 'bold 16px system-ui, sans-serif';
+    centerValue.textContent = formatMoney(total);
+    svg.appendChild(centerValue);
+  }
+  function renderSummary() {
+    var recs = filteredRecords();
+    var totalExpense = 0, totalIncome = 0;
+    recs.forEach(function (r) { if (r.type === 'expense') totalExpense += r.amount; else totalIncome += r.amount; });
+    els.statExpense.textContent = formatMoney(totalExpense);
+    els.statIncome.textContent = formatMoney(totalIncome);
+    els.statBalance.textContent = formatMoney(totalIncome - totalExpense);
+    els.periodRangeLabel.textContent = periodLabelText();
+    document.querySelector('.records-head h2').textContent = '紀錄・' + periodLabelText();
+
+    var byCat = {};
+    recs.forEach(function (r) {
+      if (r.type !== state.chartType) return;
+      byCat[r.categoryId] = (byCat[r.categoryId] || 0) + r.amount;
+    });
+    var data = Object.keys(byCat).map(function (id) {
+      var cat = findCat(id);
+      return { name: cat ? cat.name : '（已刪除分類）', colorVar: cat ? cat.colorVar : '--series-8', value: byCat[id] };
+    }).sort(function (a, b) { return b.value - a.value; });
+    var total = data.reduce(function (s, d) { return s + d.value; }, 0);
+
+    if (total > 0) {
+      els.chartEmpty.classList.add('hidden');
+      buildDonut(els.pieChart, data, total);
+    } else {
+      els.pieChart.innerHTML = '';
+      els.chartEmpty.classList.remove('hidden');
+    }
+    els.chartLegend.innerHTML = '';
+    data.forEach(function (d) {
+      var li = document.createElement('li');
+      var pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
+      li.innerHTML = '<span class="dot" style="background:var(' + d.colorVar + ')"></span>' +
+        '<span class="name">' + escapeHtml(d.name) + '</span>' +
+        '<span class="amt">' + formatMoney(d.value) + '</span>' +
+        '<span class="pct">' + pct + '%</span>';
+      els.chartLegend.appendChild(li);
+    });
+  }
+
+  // ---------- render: records list ----------
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function renderRecordsList() {
+    var recs = filteredRecords();
+    els.recordsList.innerHTML = '';
+    if (!recs.length) {
+      var empty = document.createElement('p');
+      empty.className = 'empty-msg';
+      empty.textContent = '這段期間還沒有紀錄，開始記一筆吧！';
+      els.recordsList.appendChild(empty);
+      return;
+    }
+    var lastDateKey = null;
+    recs.forEach(function (r) {
+      if (state.period !== 'day' && r.date !== lastDateKey) {
+        lastDateKey = r.date;
+        var label = document.createElement('div');
+        label.className = 'day-group-label';
+        var dObj = fromKey(r.date);
+        label.textContent = isSameDay(dObj, new Date()) ? ('今天 ' + shortDate(dObj)) : (shortDate(dObj) + ' (' + WEEKDAY[dObj.getDay()] + ')');
+        els.recordsList.appendChild(label);
+      }
+      var cat = findCat(r.categoryId);
+      var row = document.createElement('div');
+      row.className = 'record-row';
+      row.innerHTML =
+        '<span class="record-dot" style="background:var(' + (cat ? cat.colorVar : '--series-8') + ')"></span>' +
+        '<span class="record-main">' +
+          '<div class="record-cat">' + escapeHtml(cat ? cat.name : '（已刪除分類）') + '</div>' +
+          (r.note ? '<div class="record-note">' + escapeHtml(r.note) + '</div>' : '') +
+        '</span>' +
+        '<span class="record-amt ' + r.type + '">' + (r.type === 'expense' ? '-' : '+') + formatMoney(r.amount).replace('-', '') + '</span>' +
+        '<span class="record-chevron">›</span>' +
+        '<button type="button" class="record-del" aria-label="刪除">✕</button>';
+      row.querySelector('.record-del').addEventListener('click', function (e) {
+        e.stopPropagation();
+        var label = (cat ? cat.name : '') + ' ' + formatMoney(r.amount);
+        if (window.confirm('刪除這筆紀錄？\n' + label)) {
+          state.records = state.records.filter(function (x) { return x.id !== r.id; });
+          saveRecords();
+          renderAll();
+        }
+      });
+      row.addEventListener('click', function () { openEditRecord(r.id); });
+      els.recordsList.appendChild(row);
+    });
+  }
+
+  // ---------- render: quick-add preview ----------
+  function updateQuickPreview() {
+    var val = els.quickInput.value;
+    var parsed = parseQuickInput(val);
+    if (!val.trim()) {
+      els.parsePreview.classList.add('hidden');
+      if (!state.manualCategoryTouched) state.tempCategoryOverride = null;
+      syncManualCategorySelect();
+      return;
+    }
+    els.parsePreview.classList.remove('hidden');
+    els.parseAmount.textContent = parsed.amount != null ? formatMoney(parsed.amount) : '尚未偵測到金額';
+    els.parseNote.textContent = parsed.note || '（無備註）';
+    var cat = effectiveCategory();
+    els.parseCategoryChip.textContent = cat.name;
+    els.parseCategoryChip.style.background = 'var(' + cat.colorVar + ')';
+    syncManualCategorySelect();
+  }
+  function syncManualCategorySelect() {
+    var cat = effectiveCategory();
+    if (els.manualCategory.value !== cat.id) els.manualCategory.value = cat.id;
+  }
+  function populateManualCategorySelect() {
+    var cats = catsOfType(state.addType);
+    els.manualCategory.innerHTML = cats.map(function (c) { return '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>'; }).join('');
+    syncManualCategorySelect();
+  }
+
+  // ---------- category pick sheet ----------
+  function openCategoryPick(context) {
+    state.categoryPickContext = context;
+    var cats = catsOfType(state.addType);
+    var current = effectiveCategory();
+    els.categoryPickGrid.innerHTML = '';
+    cats.forEach(function (c) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      if (c.id === current.id) btn.classList.add('selected');
+      btn.innerHTML = '<span class="dot" style="background:var(' + c.colorVar + ')"></span><span>' + escapeHtml(c.name) + '</span>';
+      btn.addEventListener('click', function () {
+        state.tempCategoryOverride = c.id;
+        state.manualCategoryTouched = true;
+        els.categoryPickSheet.classList.add('hidden');
+        updateQuickPreview();
+      });
+      els.categoryPickGrid.appendChild(btn);
+    });
+    els.categoryPickSheet.classList.remove('hidden');
+  }
+
+  // ---------- edit record ----------
+  function populateEditCategorySelect(type, selectedId) {
+    var cats = catsOfType(type);
+    els.editCategory.innerHTML = cats.map(function (c) { return '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>'; }).join('');
+    var stillValid = cats.some(function (c) { return c.id === selectedId; });
+    els.editCategory.value = stillValid ? selectedId : fallbackCat(type).id;
+  }
+  function setEditType(type, selectedCategoryId) {
+    state.editRecordType = type;
+    Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-edittype]'), function (b) {
+      b.classList.toggle('active', b.dataset.edittype === type);
+    });
+    populateEditCategorySelect(type, selectedCategoryId);
+  }
+  function openEditRecord(recordId) {
+    var r = state.records.find(function (x) { return x.id === recordId; });
+    if (!r) return;
+    state.editingRecordId = recordId;
+    setEditType(r.type, r.categoryId);
+    els.editDate.value = r.date;
+    els.editAmount.value = r.amount;
+    els.editNote.value = r.note || '';
+    els.editRecordSheet.classList.remove('hidden');
+  }
+  function closeEditRecord() { els.editRecordSheet.classList.add('hidden'); state.editingRecordId = null; }
+
+  // ---------- settings: category management ----------
+  function renderCategoryEditList() {
+    var cats = catsOfType(state.editingCategoryContext);
+    els.categoryEditList.innerHTML = '';
+    cats.forEach(function (c) {
+      var item = document.createElement('div');
+      item.className = 'category-edit-item';
+      item.innerHTML =
+        '<div class="category-edit-item-head">' +
+          '<button type="button" class="dot color-dot-btn" style="background:var(' + c.colorVar + ')" aria-label="選擇顏色"></button>' +
+          '<input type="text" value="' + escapeHtml(c.name) + '">' +
+          '<button type="button" class="del-cat-btn">刪除</button>' +
+        '</div>' +
+        '<div class="color-swatch-row hidden">' +
+          SERIES_SLOTS.map(function (v) {
+            return '<button type="button" class="color-swatch' + (v === c.colorVar ? ' selected' : '') + '" data-color="' + v + '" style="background:var(' + v + ')" aria-label="選擇這個顏色"></button>';
+          }).join('') +
+        '</div>' +
+        '<p class="kw-label">自動分類關鍵字（用逗號分隔）</p>' +
+        '<textarea>' + escapeHtml(c.keywords.join('、')) + '</textarea>';
+
+      var nameInput = item.querySelector('input');
+      nameInput.addEventListener('change', function () {
+        c.name = nameInput.value.trim() || c.name;
+        saveCategories();
+        renderAll();
+      });
+      var kwArea = item.querySelector('textarea');
+      kwArea.addEventListener('change', function () {
+        c.keywords = kwArea.value.split(/[,，、]/).map(function (s) { return s.trim(); }).filter(Boolean);
+        saveCategories();
+      });
+
+      var dotBtn = item.querySelector('.color-dot-btn');
+      var swatchRow = item.querySelector('.color-swatch-row');
+      dotBtn.addEventListener('click', function () { swatchRow.classList.toggle('hidden'); });
+      Array.prototype.forEach.call(item.querySelectorAll('.color-swatch'), function (sw) {
+        sw.addEventListener('click', function () {
+          c.colorVar = sw.dataset.color;
+          saveCategories();
+          renderCategoryEditList();
+          renderAll();
+        });
+      });
+
+      item.querySelector('.del-cat-btn').addEventListener('click', function () {
+        var siblings = catsOfType(c.type).filter(function (x) { return x.id !== c.id; });
+        if (siblings.length === 0) { showToast('至少需保留一個分類'); return; }
+        var fb = c.fallback ? siblings[0] : (siblings.find(function (x) { return x.fallback; }) || siblings[siblings.length - 1]);
+        if (!window.confirm('刪除分類「' + c.name + '」？此分類下的紀錄會改列為「' + fb.name + '」。')) return;
+        if (c.fallback) fb.fallback = true;
+        state.records.forEach(function (r) { if (r.categoryId === c.id) r.categoryId = fb.id; });
+        state.categories = state.categories.filter(function (x) { return x.id !== c.id; });
+        saveCategories(); saveRecords();
+        renderCategoryEditList();
+        renderAll();
+      });
+
+      els.categoryEditList.appendChild(item);
+    });
+  }
+
+  // ---------- CSV export / import ----------
+  function exportCsv() {
+    var rows = [['date', 'type', 'category', 'amount', 'note']];
+    state.records.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (r) {
+      var cat = findCat(r.categoryId);
+      rows.push([r.date, r.type, cat ? cat.name : '', r.amount, r.note || '']);
+    });
+    var csv = '﻿' + rows.map(function (row) {
+      return row.map(function (v) {
+        var s = String(v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(',');
+    }).join('\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '記帳-' + toKey(new Date()) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function parseCsvLine(line) {
+    var out = [], cur = '', inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (ch === '"') { inQuotes = false; }
+        else { cur += ch; }
+      } else {
+        if (ch === '"') inQuotes = true;
+        else if (ch === ',') { out.push(cur); cur = ''; }
+        else cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+  function importCsv(text) {
+    var lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(function (l) { return l.trim(); });
+    if (!lines.length) return 0;
+    var count = 0;
+    for (var i = 1; i < lines.length; i++) {
+      var cols = parseCsvLine(lines[i]);
+      var date = cols[0], type = cols[1], catName = cols[2], amount = parseFloat(cols[3]), note = cols[4] || '';
+      if (!date || (type !== 'expense' && type !== 'income') || isNaN(amount)) continue;
+      var cat = state.categories.find(function (c) { return c.type === type && c.name === catName; });
+      if (!cat) {
+        cat = { id: uid(), type: type, name: catName || (type === 'expense' ? '其他' : '其他收入'), colorVar: nextColorVar(type), keywords: [], fallback: false };
+        state.categories.push(cat);
+      }
+      state.records.push({ id: uid(), date: date, type: type, categoryId: cat.id, amount: amount, note: note, createdAt: Date.now() });
+      count++;
+    }
+    saveCategories(); saveRecords();
+    return count;
+  }
+
+  // ---------- toast ----------
+  var toastTimer = null;
+  function showToast(msg) {
+    els.toast.textContent = msg;
+    els.toast.classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { els.toast.classList.add('hidden'); }, 1800);
+  }
+
+  // ---------- master render ----------
+  function renderAll() {
+    renderDateBar();
+    renderSummary();
+    renderRecordsList();
+    populateManualCategorySelect();
+    updateQuickPreview();
+  }
+
+  // ---------- events ----------
+  function bindEvents() {
+    els.themeToggleBtn.addEventListener('click', function () {
+      var cur = document.documentElement.getAttribute('data-theme');
+      var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var isDark = cur ? cur === 'dark' : systemDark;
+      var next = isDark ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem(STORAGE.theme, next);
+    });
+
+    els.datePrevBtn.addEventListener('click', function () { state.selectedDate = addDays(state.selectedDate, -1); renderAll(); });
+    els.dateNextBtn.addEventListener('click', function () { state.selectedDate = addDays(state.selectedDate, 1); renderAll(); });
+    els.todayBtn.addEventListener('click', function () { state.selectedDate = new Date(); renderAll(); });
+
+    els.dateDisplayBtn.addEventListener('click', function () {
+      var willShow = els.calendarPopup.classList.contains('hidden');
+      els.calendarPopup.classList.toggle('hidden');
+      if (willShow) { state.calendarMonth = startOfMonth(state.selectedDate); renderCalendar(); }
+    });
+    document.addEventListener('click', function (e) {
+      if (els.calendarPopup.classList.contains('hidden')) return;
+      if (els.calendarPopup.contains(e.target) || els.dateDisplayBtn.contains(e.target)) return;
+      els.calendarPopup.classList.add('hidden');
+    });
+    els.calPrevMonth.addEventListener('click', function () { state.calendarMonth = addMonths(state.calendarMonth, -1); renderCalendar(); });
+    els.calNextMonth.addEventListener('click', function () { state.calendarMonth = addMonths(state.calendarMonth, 1); renderCalendar(); });
+
+    Array.prototype.forEach.call(els.periodTabs.querySelectorAll('.period-tab'), function (btn) {
+      btn.addEventListener('click', function () {
+        state.period = btn.dataset.period;
+        Array.prototype.forEach.call(els.periodTabs.querySelectorAll('.period-tab'), function (b) {
+          b.classList.toggle('active', b === btn);
+          b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+        });
+        renderAll();
+      });
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.chart-toggle-btn'), function (btn) {
+      btn.addEventListener('click', function () {
+        state.chartType = btn.dataset.chartType;
+        Array.prototype.forEach.call(document.querySelectorAll('.chart-toggle-btn'), function (b) {
+          b.classList.toggle('active', b === btn);
+          b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+        });
+        renderSummary();
+      });
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-type]'), function (btn) {
+      btn.addEventListener('click', function () {
+        state.addType = btn.dataset.type;
+        state.tempCategoryOverride = null;
+        state.manualCategoryTouched = false;
+        Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-type]'), function (b) {
+          b.classList.toggle('active', b === btn);
+          b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+        });
+        populateManualCategorySelect();
+        updateQuickPreview();
+      });
+    });
+
+    els.quickInput.addEventListener('input', function () {
+      state.manualCategoryTouched = false;
+      state.tempCategoryOverride = null;
+      updateQuickPreview();
+    });
+    els.parseCategoryChip.addEventListener('click', function () { openCategoryPick('quickadd'); });
+    els.manualCategory.addEventListener('change', function () {
+      state.tempCategoryOverride = els.manualCategory.value;
+      state.manualCategoryTouched = true;
+      updateQuickPreview();
+    });
+    els.advancedToggle.addEventListener('click', function () {
+      els.advancedFields.classList.toggle('hidden');
+      els.advancedToggle.textContent = els.advancedFields.classList.contains('hidden') ? '進階選項 ▾' : '進階選項 ▴';
+    });
+
+    els.categoryPickBackdrop.addEventListener('click', function () { els.categoryPickSheet.classList.add('hidden'); });
+    els.categoryPickClose.addEventListener('click', function () { els.categoryPickSheet.classList.add('hidden'); });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-edittype]'), function (btn) {
+      btn.addEventListener('click', function () { setEditType(btn.dataset.edittype, els.editCategory.value); });
+    });
+    els.editRecordBackdrop.addEventListener('click', closeEditRecord);
+    els.editRecordCloseBtn.addEventListener('click', closeEditRecord);
+    els.editSaveBtn.addEventListener('click', function () {
+      var r = state.records.find(function (x) { return x.id === state.editingRecordId; });
+      if (!r) return;
+      var amount = parseFloat(els.editAmount.value);
+      if (!amount || amount <= 0) { showToast('請輸入有效金額'); els.editAmount.focus(); return; }
+      var dateVal = els.editDate.value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) { showToast('請選擇日期'); return; }
+      r.type = state.editRecordType;
+      r.date = dateVal;
+      r.categoryId = els.editCategory.value;
+      r.amount = amount;
+      r.note = els.editNote.value.trim();
+      saveRecords();
+      closeEditRecord();
+      renderAll();
+      showToast('已更新紀錄');
+    });
+    els.editDeleteBtn.addEventListener('click', function () {
+      var r = state.records.find(function (x) { return x.id === state.editingRecordId; });
+      if (!r) return;
+      var cat = findCat(r.categoryId);
+      if (!window.confirm('刪除這筆紀錄？\n' + (cat ? cat.name : '') + ' ' + formatMoney(r.amount))) return;
+      state.records = state.records.filter(function (x) { return x.id !== r.id; });
+      saveRecords();
+      closeEditRecord();
+      renderAll();
+      showToast('已刪除');
+    });
+
+    els.quickAddForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var parsed = parseQuickInput(els.quickInput.value);
+      var amount = parsed.amount;
+      var note = parsed.note;
+      var manualAmt = parseFloat(els.manualAmount.value);
+      if (!isNaN(manualAmt) && manualAmt > 0) amount = manualAmt;
+      if (els.manualNote.value.trim()) note = els.manualNote.value.trim();
+      if (!amount || amount <= 0) { showToast('請輸入有效金額'); els.quickInput.focus(); return; }
+      var cat = effectiveCategory();
+      state.records.push({ id: uid(), date: toKey(state.selectedDate), type: state.addType, categoryId: cat.id, amount: amount, note: note, createdAt: Date.now() });
+      saveRecords();
+      els.quickInput.value = ''; els.manualAmount.value = ''; els.manualNote.value = '';
+      state.tempCategoryOverride = null; state.manualCategoryTouched = false;
+      renderAll();
+      showToast('已新增一筆' + (state.addType === 'expense' ? '支出' : '收入'));
+    });
+
+    els.exportBtn.addEventListener('click', exportCsv);
+    els.settingsExportBtn.addEventListener('click', exportCsv);
+    els.importFileInput.addEventListener('change', function () {
+      var file = els.importFileInput.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var count = importCsv(String(reader.result));
+        showToast('已匯入 ' + count + ' 筆紀錄');
+        renderCategoryEditList();
+        renderAll();
+        els.importFileInput.value = '';
+      };
+      reader.readAsText(file, 'UTF-8');
+    });
+    els.resetDataBtn.addEventListener('click', function () {
+      if (!window.confirm('確定要清除所有記帳資料嗎？此動作無法復原。')) return;
+      localStorage.removeItem(STORAGE.records);
+      localStorage.removeItem(STORAGE.categories);
+      location.reload();
+    });
+
+    els.settingsBtn.addEventListener('click', function () {
+      state.editingCategoryContext = state.addType;
+      Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-settype]'), function (b) {
+        b.classList.toggle('active', b.dataset.settype === state.editingCategoryContext);
+      });
+      renderCategoryEditList();
+      els.settingsSheet.classList.remove('hidden');
+    });
+    els.settingsCloseBtn.addEventListener('click', function () { els.settingsSheet.classList.add('hidden'); });
+    els.settingsBackdrop.addEventListener('click', function () { els.settingsSheet.classList.add('hidden'); });
+    Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-settype]'), function (btn) {
+      btn.addEventListener('click', function () {
+        state.editingCategoryContext = btn.dataset.settype;
+        Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-settype]'), function (b) {
+          b.classList.toggle('active', b === btn);
+        });
+        renderCategoryEditList();
+      });
+    });
+    els.addCategoryBtn.addEventListener('click', function () {
+      var cat = { id: uid(), type: state.editingCategoryContext, name: '新分類', colorVar: nextColorVar(state.editingCategoryContext), keywords: [], fallback: false };
+      state.categories.push(cat);
+      saveCategories();
+      renderCategoryEditList();
+      var inputs = els.categoryEditList.querySelectorAll('.category-edit-item-head input[type="text"]');
+      var last = inputs[inputs.length - 1];
+      if (last) { last.focus(); last.select(); }
+    });
+  }
+
+  // ---------- init ----------
+  function init() {
+    cacheEls();
+    var savedTheme = localStorage.getItem(STORAGE.theme);
+    if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+    state.categories = loadCategories();
+    state.records = loadRecords();
+    populateManualCategorySelect();
+    bindEvents();
+    renderAll();
+
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
