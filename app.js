@@ -12,13 +12,13 @@
   var PASTEL_SLOTS = ['--pastel-1', '--pastel-2', '--pastel-3', '--pastel-4', '--pastel-5', '--pastel-6', '--pastel-7', '--pastel-8'];
 
   var DEFAULT_EXPENSE_CATS = [
-    { name: '餐飲', colorVar: '--series-1', keywords: ['早餐', '午餐', '晚餐', '消夜', '宵夜', '咖啡', '飲料', '超商', '全家', '7-11', '711', '7-eleven', '萊爾富', 'ok超商', '餐廳', '小吃', '火鍋', '便當', '飲品', '手搖', '星巴克', '麥當勞', '肯德基', '拉麵', '牛肉麵', '早午餐', '外送', 'foodpanda', 'ubereats'] },
-    { name: '交通', colorVar: '--series-2', keywords: ['捷運', '公車', '計程車', 'uber', '加油', '停車', '高鐵', '台鐵', '悠遊卡', '機車', '油錢', '過路費', '停車費', '火車', '客運'] },
-    { name: '購物', colorVar: '--series-3', keywords: ['網購', '蝦皮', 'momo', '衣服', '鞋子', '日用品', '大賣場', 'costco', '好市多', '家樂福', '全聯', '寶雅', '無印良品', 'ikea', '購物'] },
-    { name: '娛樂', colorVar: '--series-4', keywords: ['電影', '遊戲', 'ktv', '唱歌', '旅遊', '訂閱', 'netflix', 'spotify', 'disney', '展覽', '演唱會'] },
-    { name: '居家', colorVar: '--series-5', keywords: ['房租', '水電', '瓦斯', '網路費', '管理費', '家具', '電費', '水費', '房貸'] },
-    { name: '醫療', colorVar: '--series-6', keywords: ['藥局', '醫院', '診所', '健保', '掛號費', '牙醫', '眼科'] },
-    { name: '教育', colorVar: '--series-7', keywords: ['學費', '書籍', '課程', '補習', '文具', '教材'] },
+    { name: '餐飲', colorVar: '--series-1', keywords: ['早餐', '午餐', '晚餐', '消夜', '宵夜', '咖啡', '飲料', '超商', '全家', '7-11', '711', '7-eleven', '萊爾富', 'ok超商', '餐廳', '小吃', '火鍋', '便當', '飲品', '手搖', '星巴克', '麥當勞', '肯德基', '拉麵', '牛肉麵', '早午餐', '外送', 'foodpanda', 'ubereats', '飲食費'] },
+    { name: '交通', colorVar: '--series-2', keywords: ['捷運', '公車', '計程車', 'uber', '加油', '停車', '高鐵', '台鐵', '悠遊卡', '機車', '油錢', '過路費', '停車費', '火車', '客運', '交通費'] },
+    { name: '購物', colorVar: '--series-3', keywords: ['網購', '蝦皮', 'momo', '衣服', '鞋子', '日用品', '大賣場', 'costco', '好市多', '家樂福', '全聯', '寶雅', '無印良品', 'ikea', '購物', '美容'] },
+    { name: '娛樂', colorVar: '--series-4', keywords: ['電影', '遊戲', 'ktv', '唱歌', '旅遊', '訂閱', 'netflix', 'spotify', 'disney', '展覽', '演唱會', '娛樂費', '訂閱類娛樂費', '旅遊費'] },
+    { name: '居家', colorVar: '--series-5', keywords: ['房租', '水電', '瓦斯', '網路費', '管理費', '家具', '電費', '水費', '房貸', '水電費', '電話費', '房費', '家庭開銷'] },
+    { name: '醫療', colorVar: '--series-6', keywords: ['藥局', '醫院', '診所', '健保', '掛號費', '牙醫', '眼科', '醫療費'] },
+    { name: '教育', colorVar: '--series-7', keywords: ['學費', '書籍', '課程', '補習', '文具', '教材', '教育費'] },
     { name: '其他', colorVar: '--series-8', keywords: [], fallback: true }
   ];
   var DEFAULT_INCOME_CATS = [
@@ -27,6 +27,24 @@
     { name: '投資', colorVar: '--series-3', keywords: ['股息', '配息', '利息', '投資', '股票'] },
     { name: '其他收入', colorVar: '--series-4', keywords: [], fallback: true }
   ];
+
+  // MoneyNote 匯出檔的分類名稱 -> 對應本 App 既有分類（真的是同一件事才合併，不是同一件事的一律保留原名各自成類）
+  var MONEYNOTE_MERGE_MAP = {
+    expense: {
+      '飲食費': '餐飲', '交通費': '交通', '日用品': '購物', '衣服': '購物', '美容': '購物',
+      '醫療費': '醫療', '教育費': '教育',
+      '水電費': '居家', '電話費': '居家', '房費': '居家', '家庭開銷': '居家',
+      '娛樂費': '娛樂', '訂閱類娛樂費': '娛樂', '旅遊費': '娛樂'
+    },
+    income: {
+      '工資': '薪資', '零花錢': '其他收入', '副業': '其他收入', '臨時收入': '其他收入'
+    }
+  };
+  // 沒有對應既有分類、會新建成獨立分類的項目，先給合理的關鍵字，別讓它空著
+  var MONEYNOTE_NEW_CATEGORY_KEYWORDS = {
+    '交際費': ['交際', '應酬', '聚餐', '禮金', '紅包', '送禮'],
+    '煙酒': ['煙', '菸', '香菸', '酒', '啤酒', '紅酒', '威士忌', '檳榔']
+  };
 
   // ---------- utils ----------
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -162,7 +180,8 @@
       'recordsList', 'exportBtn', 'settingsSheet', 'settingsBackdrop', 'settingsCloseBtn', 'categoryEditList',
       'addCategoryBtn', 'settingsExportBtn', 'importFileInput', 'resetDataBtn', 'toast',
       'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editCategory',
-      'editAmount', 'editNote', 'editDeleteBtn', 'editSaveBtn'
+      'editAmount', 'editNote', 'editDeleteBtn', 'editSaveBtn',
+      'mergeCategorySheet', 'mergeCategoryBackdrop', 'mergeCategoryTitle', 'mergeCategoryGrid', 'mergeCategoryCancel'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
   }
 
@@ -404,6 +423,28 @@
   function closeEditRecord() { els.editRecordSheet.classList.add('hidden'); state.editingRecordId = null; }
 
   // ---------- settings: category management ----------
+  function openMergeCategorySheet(c, siblings) {
+    els.mergeCategoryTitle.textContent = '刪除「' + c.name + '」— 紀錄要轉移到哪個分類？';
+    els.mergeCategoryGrid.innerHTML = '';
+    siblings.forEach(function (s) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.innerHTML = '<span class="dot" style="background:var(' + s.colorVar + ')"></span><span>' + escapeHtml(s.name) + (s.fallback ? '（收容分類）' : '') + '</span>';
+      btn.addEventListener('click', function () { mergeDeleteCategory(c, s); });
+      els.mergeCategoryGrid.appendChild(btn);
+    });
+    els.mergeCategorySheet.classList.remove('hidden');
+  }
+  function mergeDeleteCategory(c, target) {
+    if (!window.confirm('刪除「' + c.name + '」，紀錄轉移到「' + target.name + '」？')) return;
+    if (c.fallback) target.fallback = true;
+    state.records.forEach(function (r) { if (r.categoryId === c.id) r.categoryId = target.id; });
+    state.categories = state.categories.filter(function (x) { return x.id !== c.id; });
+    saveCategories(); saveRecords();
+    els.mergeCategorySheet.classList.add('hidden');
+    renderCategoryEditList();
+    renderAll();
+  }
   function swatchGroupHtml(slots, selectedColorVar) {
     return slots.map(function (v) {
       return '<button type="button" class="color-swatch' + (v === selectedColorVar ? ' selected' : '') + '" data-color="' + v + '" style="background:var(' + v + ')" aria-label="選擇這個顏色"></button>';
@@ -457,14 +498,7 @@
       item.querySelector('.del-cat-btn').addEventListener('click', function () {
         var siblings = catsOfType(c.type).filter(function (x) { return x.id !== c.id; });
         if (siblings.length === 0) { showToast('至少需保留一個分類'); return; }
-        var fb = c.fallback ? siblings[0] : (siblings.find(function (x) { return x.fallback; }) || siblings[siblings.length - 1]);
-        if (!window.confirm('刪除分類「' + c.name + '」？此分類下的紀錄會改列為「' + fb.name + '」。')) return;
-        if (c.fallback) fb.fallback = true;
-        state.records.forEach(function (r) { if (r.categoryId === c.id) r.categoryId = fb.id; });
-        state.categories = state.categories.filter(function (x) { return x.id !== c.id; });
-        saveCategories(); saveRecords();
-        renderCategoryEditList();
-        renderAll();
+        openMergeCategorySheet(c, siblings);
       });
 
       els.categoryEditList.appendChild(item);
@@ -511,10 +545,10 @@
     out.push(cur);
     return out;
   }
-  function findOrCreateCategoryByName(type, name) {
+  function findOrCreateCategoryByName(type, name, keywordsIfCreated) {
     var cat = state.categories.find(function (c) { return c.type === type && c.name === name; });
     if (!cat) {
-      cat = { id: uid(), type: type, name: name || (type === 'expense' ? '其他' : '其他收入'), colorVar: nextColorVar(type), keywords: [], fallback: false };
+      cat = { id: uid(), type: type, name: name || (type === 'expense' ? '其他' : '其他收入'), colorVar: nextColorVar(type), keywords: keywordsIfCreated ? keywordsIfCreated.slice() : [], fallback: false };
       state.categories.push(cat);
     }
     return cat;
@@ -570,7 +604,9 @@
         if (!date || isNaN(amount) || (typeCode !== '0' && typeCode !== '1')) continue;
         var type = typeCode === '1' ? 'income' : 'expense';
         var info = categoryMap[dcols[3]];
-        var cat = findOrCreateCategoryByName(type, info ? info.name : null);
+        var rawName = info ? info.name : null;
+        var mergedName = rawName && MONEYNOTE_MERGE_MAP[type][rawName];
+        var cat = findOrCreateCategoryByName(type, mergedName || rawName, MONEYNOTE_NEW_CATEGORY_KEYWORDS[rawName]);
         var createdAtMs = Date.parse(dcols[5]);
         state.records.push({
           id: uid(), date: date, type: type, categoryId: cat.id, amount: amount,
@@ -692,6 +728,9 @@
 
     els.categoryPickBackdrop.addEventListener('click', function () { els.categoryPickSheet.classList.add('hidden'); });
     els.categoryPickClose.addEventListener('click', function () { els.categoryPickSheet.classList.add('hidden'); });
+
+    els.mergeCategoryBackdrop.addEventListener('click', function () { els.mergeCategorySheet.classList.add('hidden'); });
+    els.mergeCategoryCancel.addEventListener('click', function () { els.mergeCategorySheet.classList.add('hidden'); });
 
     Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-edittype]'), function (btn) {
       btn.addEventListener('click', function () { setEditType(btn.dataset.edittype, els.editCategory.value); });
