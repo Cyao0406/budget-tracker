@@ -179,7 +179,15 @@ import {
     if (cloudUser) els.authEmail.textContent = cloudUser.email || cloudUser.displayName || '（已登入）';
   }
 
+  // 應用層再多一道防線：不管 Google OAuth 同意畫面那邊的「測試中」限制實際上是否有正確擋人，
+  // 這裡直接白名單擋掉非本人帳號，登入後立刻自動登出，不會進到搬遷/同步流程。
+  var ALLOWED_CLOUD_EMAILS = ['dogd989312@gmail.com'];
   function handleSignedIn(user) {
+    if (user.email && ALLOWED_CLOUD_EMAILS.indexOf(user.email.toLowerCase()) === -1) {
+      showToast('這個帳號不是授權帳號，已自動登出');
+      signOut(auth);
+      return;
+    }
     cloudUser = user;
     renderAuthUi();
     Promise.all([getDocs(cloudCollection('records')), getDocs(cloudCollection('categories'))]).then(function (results) {
