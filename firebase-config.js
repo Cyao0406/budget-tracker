@@ -13,17 +13,18 @@ var isLocalDev = location.hostname === 'localhost' || location.hostname === '127
 // 本機開發／測試一律連本機模擬器，用一個 demo- 開頭的假 project id 就好，
 // 不需要真的 Firebase 專案、不需要登入 firebase CLI。
 //
-// 正式上線前，把下面 REPLACE_ME 換成你自己 Firebase 專案「一般設定 -> 你的應用程式」
-// 裡看到的 config 物件（這組值本來就是設計成可以放在前端程式碼裡，不是密碼）。
+// 正式環境用的是使用者自己的 Firebase 專案 budget-tracker-8edd1（2026-08-12 用 firebase CLI
+// 建立 web app 取得，見 firebase apps:sdkconfig）。這組值本來就是設計成可以放在前端程式碼裡
+// 公開的，不是密碼——真正的存取控制在 firestore.rules。
 var firebaseConfig = isLocalDev
   ? { apiKey: 'demo-api-key', authDomain: 'localhost', projectId: 'demo-budget-tracker' }
   : {
-    apiKey: 'REPLACE_ME',
-    authDomain: 'REPLACE_ME.firebaseapp.com',
-    projectId: 'REPLACE_ME',
-    storageBucket: 'REPLACE_ME.appspot.com',
-    messagingSenderId: 'REPLACE_ME',
-    appId: 'REPLACE_ME'
+    apiKey: 'AIzaSyAIJoNBYqwIzjOOqAxzw3al2L1H1GSu_uc',
+    authDomain: 'budget-tracker-8edd1.firebaseapp.com',
+    projectId: 'budget-tracker-8edd1',
+    storageBucket: 'budget-tracker-8edd1.firebasestorage.app',
+    messagingSenderId: '412181679584',
+    appId: '1:412181679584:web:8b75dd9850e826dae3af85'
   };
 
 export var firebaseApp = appMod.initializeApp(firebaseConfig);
