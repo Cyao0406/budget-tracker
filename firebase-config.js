@@ -20,9 +20,10 @@ var firebaseConfig = isLocalDev
   ? { apiKey: 'demo-api-key', authDomain: 'localhost', projectId: 'demo-budget-tracker' }
   : {
     apiKey: 'AIzaSyAIJoNBYqwIzjOOqAxzw3al2L1H1GSu_uc',
-    // 故意用 .web.app 而不是 .firebaseapp.com：網站實際上是部署在 .web.app 這個網址，
-    // authDomain 要跟網站本身同源，登入用的第三方儲存空間存取才不會被瀏覽器擋掉。
-    authDomain: 'budget-tracker-8edd1.web.app',
+    // 用 .firebaseapp.com（不是 .web.app）：這是 Firebase 啟用 Google 登入時預設、
+    // 自動幫你把 OAuth 重新導向 URI 註冊好的網域，不用再手動去 Google Cloud Console
+    // 加東西。網站本身也要透過這個網域打開才會同源，見下面 index.html / 使用說明。
+    authDomain: 'budget-tracker-8edd1.firebaseapp.com',
     projectId: 'budget-tracker-8edd1',
     storageBucket: 'budget-tracker-8edd1.firebasestorage.app',
     messagingSenderId: '412181679584',
