@@ -98,7 +98,7 @@ cd "C:\Users\user\OneDrive\桌面\10-19_System_Automation\15 App Projects\budget
 
 ## 已知眉角
 
-- **Service worker 快取**：`sw.js` 目前是「有快取先回快取、背景再更新」的策略，且只在 `location.hostname === 'localhost'` 或 https 才會註冊（用區網 IP 測試手機時不會註冊，所以那個管道不會有快取問題）。如果在 `localhost` 測試時「改了程式碼但畫面沒變」，先重新整理兩次或清 site data，不是程式壞了。
+- **Service worker 快取**：`sw.js` 改成 network-first（有網路一定拿最新版本，只有離線才退回用快取）——一開始是 cache-first（先回快取、背景才更新），導致使用者關掉重開看到的還是舊版，要重整兩次才會是新的，造成不少困惑，2026-08-12 改掉了。只在 `location.hostname === 'localhost'` 或 https 才會註冊（用區網 IP 測試手機時不會註冊）。改 `sw.js` 本身或快取策略時記得同步把 `CACHE_NAME` 往上加版號，強制舊快取失效。
 - **確認對話框**：刪除紀錄/分類目前用瀏覽器原生 `window.confirm()`，不是自訂 UI，故意保持簡單。
 - **測試方式**：這個環境沒辦法對瀏覽器截圖，驗證功能都是用 `javascript_tool` 直接操作 DOM（設值、dispatch 事件、讀 innerText/localStorage）取代真人點擊，之後如果继续開發建議延用這個模式驗證，比較快也比較穩定。
 - **MoneyNote CSV 匯入的分類合併**：`MONEYNOTE_MERGE_MAP`（`app.js`）是一份「MoneyNote 分類名稱 → 本 App 既有分類」的白名單對照表，只有**確定是同一件事、只是換個名字**的才會合併（例如「醫療費」→「醫療」、「飲食費」→「餐飲」）。真的沒有對應概念的（目前是「交際費」「煙酒」）會建成獨立新分類，並在 `MONEYNOTE_NEW_CATEGORY_KEYWORDS` 給預設關鍵字，不要空著。之後如果來源 App 的分類名稱變了，或想調整合併規則，改這兩個常數即可，不用動解析邏輯本身。
