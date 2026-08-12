@@ -20,7 +20,9 @@ var firebaseConfig = isLocalDev
   ? { apiKey: 'demo-api-key', authDomain: 'localhost', projectId: 'demo-budget-tracker' }
   : {
     apiKey: 'AIzaSyAIJoNBYqwIzjOOqAxzw3al2L1H1GSu_uc',
-    authDomain: 'budget-tracker-8edd1.firebaseapp.com',
+    // 故意用 .web.app 而不是 .firebaseapp.com：網站實際上是部署在 .web.app 這個網址，
+    // authDomain 要跟網站本身同源，登入用的第三方儲存空間存取才不會被瀏覽器擋掉。
+    authDomain: 'budget-tracker-8edd1.web.app',
     projectId: 'budget-tracker-8edd1',
     storageBucket: 'budget-tracker-8edd1.firebasestorage.app',
     messagingSenderId: '412181679584',
