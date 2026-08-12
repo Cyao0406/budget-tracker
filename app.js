@@ -8,6 +8,33 @@ import {
   'use strict';
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
+  // 給家人/自己看的白話版更新紀錄，完整技術細節在 CLAUDE.md。新增版本時陣列開頭插入一筆，
+  // CURRENT_VERSION 記得跟著更新（設定頁的版本號、標籤都是抓這個常數）。
+  var CURRENT_VERSION = 'v2.1';
+  var CHANGELOG = [
+    { version: 'v2.1', name: '圖示改版', date: '2026-08-12', notes: [
+      '主畫面圖示重新設計，改成金幣造型的 $ 符號圖示'
+    ] },
+    { version: 'v2.0', name: '雲端同步上線', date: '2026-08-12', notes: [
+      '新增「登入 Google 帳號」選用功能，登入後資料自動同步到雲端，換手機、加裝置都不怕資料不見',
+      '不登入完全不受影響，單機模式一樣正常使用',
+      '離線快取邏輯改成「有網路優先拿最新版本」，之後更新只要關掉 App 重開就會是最新版'
+    ] },
+    { version: 'v1.2', name: '支援匯入舊記帳 App 資料', date: '2026-08-07', notes: [
+      '「匯入 CSV」可以直接讀取 MoneyNote App 匯出的資料，自動判斷分類、金額、日期',
+      '匯入時同性質的分類會自動合併，不會產生一堆重複分類',
+      '分類刪除時可以選要把紀錄轉移到哪一個分類，不是固定丟進「其他」'
+    ] },
+    { version: 'v1.1', name: '分類顏色更多選擇', date: '2026-08-07', notes: [
+      '分類顏色從 8 種增加到 16 種，新增一組淺色系選項'
+    ] },
+    { version: 'v1.0', name: '記帳 App 上線', date: '2026-08-07', notes: [
+      '快速輸入一行文字自動判斷金額並猜測分類',
+      '日 / 週 / 月報表，圓餅圖呈現各分類佔比',
+      '紀錄可以點開編輯或刪除，分類可自訂名稱、顏色、關鍵字',
+      'CSV 匯出備份，支援加入手機主畫面像 App 一樣使用'
+    ] }
+  ];
   var STORAGE = {
     records: 'budgetapp.records',
     categories: 'budgetapp.categories',
@@ -324,7 +351,8 @@ import {
       'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editCategory',
       'editAmount', 'editNote', 'editDeleteBtn', 'editSaveBtn',
       'mergeCategorySheet', 'mergeCategoryBackdrop', 'mergeCategoryTitle', 'mergeCategoryGrid', 'mergeCategoryCancel',
-      'authSignedOut', 'authSignedIn', 'authEmail', 'googleSignInBtn', 'signOutBtn'
+      'authSignedOut', 'authSignedIn', 'authEmail', 'googleSignInBtn', 'signOutBtn',
+      'currentVersionTag', 'changelogBtn', 'changelogSheet', 'changelogBackdrop', 'changelogCloseBtn', 'changelogList'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
   }
 
@@ -591,6 +619,20 @@ import {
   function swatchGroupHtml(slots, selectedColorVar) {
     return slots.map(function (v) {
       return '<button type="button" class="color-swatch' + (v === selectedColorVar ? ' selected' : '') + '" data-color="' + v + '" style="background:var(' + v + ')" aria-label="選擇這個顏色"></button>';
+    }).join('');
+  }
+  function renderChangelog() {
+    els.currentVersionTag.textContent = CURRENT_VERSION;
+    els.changelogList.innerHTML = CHANGELOG.map(function (entry) {
+      var notes = entry.notes.map(function (n) { return '<li>' + escapeHtml(n) + '</li>'; }).join('');
+      return '<div class="changelog-entry">' +
+        '<div class="changelog-entry-head">' +
+          '<span class="changelog-version">' + escapeHtml(entry.version) + '</span>' +
+          '<span class="changelog-name">' + escapeHtml(entry.name) + '</span>' +
+          '<span class="changelog-date">' + escapeHtml(entry.date) + '</span>' +
+        '</div>' +
+        '<ul>' + notes + '</ul>' +
+      '</div>';
     }).join('');
   }
   function renderCategoryEditList() {
@@ -981,6 +1023,10 @@ import {
     });
     els.settingsCloseBtn.addEventListener('click', function () { els.settingsSheet.classList.add('hidden'); });
     els.settingsBackdrop.addEventListener('click', function () { els.settingsSheet.classList.add('hidden'); });
+
+    els.changelogBtn.addEventListener('click', function () { els.changelogSheet.classList.remove('hidden'); });
+    els.changelogBackdrop.addEventListener('click', function () { els.changelogSheet.classList.add('hidden'); });
+    els.changelogCloseBtn.addEventListener('click', function () { els.changelogSheet.classList.add('hidden'); });
     Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-settype]'), function (btn) {
       btn.addEventListener('click', function () {
         state.editingCategoryContext = btn.dataset.settype;
@@ -1011,6 +1057,7 @@ import {
     populateManualCategorySelect();
     bindEvents();
     renderAll();
+    renderChangelog();
     initCloudSync();
 
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

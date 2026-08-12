@@ -425,6 +425,22 @@ body {
 .cloud-sync-section #authStatusHint { margin: 0 0 8px; }
 .file-import-btn { cursor: pointer; }
 
+.version-btn {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  background: transparent; border: none; padding: 4px 2px; cursor: pointer;
+  font-size: 13px; color: var(--text-secondary);
+}
+.version-btn #currentVersionTag { color: var(--text-primary); font-weight: 700; }
+.version-btn-cta { color: var(--series-1); font-weight: 600; }
+
+.changelog-list { display: flex; flex-direction: column; gap: 18px; }
+.changelog-entry-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.changelog-version { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.changelog-name { font-size: 13px; font-weight: 600; color: var(--series-1); }
+.changelog-date { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+.changelog-entry ul { margin: 0; padding-left: 1.1em; }
+.changelog-entry li { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; line-height: 1.5; }
+
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom));
   transform: translateX(-50%); background: var(--text-primary); color: var(--page);

@@ -250,6 +250,24 @@
         <button type="button" class="text-btn danger" id="resetDataBtn">清除所有資料</button>
       </div>
       <p class="hint">資料預設只存在此瀏覽器裝置上（localStorage），不登入也能正常使用。登入雲端同步後，資料會額外備份到雲端並同步到其他登入同帳號的裝置；清除瀏覽器資料前仍建議定期匯出 CSV 備份。匯入同時支援本 App 匯出的格式，以及 MoneyNote App 匯出的 CSV。</p>
+
+      <hr class="divider">
+      <button type="button" class="version-btn" id="changelogBtn">
+        <span>版本 <span id="currentVersionTag"></span></span>
+        <span class="version-btn-cta">最近更新了什麼 ›</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Changelog / what's new -->
+  <div class="sheet hidden" id="changelogSheet">
+    <div class="sheet-backdrop" id="changelogBackdrop"></div>
+    <div class="sheet-body sheet-body-lg">
+      <div class="sheet-header">
+        <h2>版本更新紀錄</h2>
+        <button type="button" class="icon-btn" id="changelogCloseBtn" aria-label="關閉">✕</button>
+      </div>
+      <div id="changelogList" class="changelog-list"></div>
     </div>
   </div>
 
