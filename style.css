@@ -12,6 +12,8 @@
   --border:         rgba(11,11,11,0.10);
   --success-text:   #006300;
 
+  --accent: #96650c; /* 主題強調色（金色），跟分類識別色 --series-* 分開，改這個不會動到使用者的分類顏色 */
+
   --series-1: #2a78d6; /* 藍 */
   --series-2: #eb6834; /* 橘 */
   --series-3: #1baf7a; /* 青 */
@@ -53,6 +55,8 @@
     --border:         rgba(255,255,255,0.10);
     --success-text:   #0ca30c;
 
+    --accent: #b8860b; /* 主題強調色（金色）深色模式版本 */
+
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
@@ -79,6 +83,8 @@
   --baseline:       #383835;
   --border:         rgba(255,255,255,0.10);
   --success-text:   #0ca30c;
+
+  --accent: #b8860b; /* 主題強調色（金色）深色模式版本 */
 
   --series-1: #3987e5;
   --series-2: #d95926;
@@ -173,7 +179,7 @@ body {
   cursor: pointer;
 }
 .today-btn {
-  border: none; background: transparent; color: var(--series-1);
+  border: none; background: transparent; color: var(--accent);
   font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
   padding: 4px 2px;
 }
@@ -209,8 +215,8 @@ body {
 }
 .calendar-grid button:active { background: var(--gridline); }
 .calendar-grid button.muted { color: var(--text-muted); }
-.calendar-grid button.today { box-shadow: inset 0 0 0 1.5px var(--series-1); }
-.calendar-grid button.selected { background: var(--series-1); color: #fff; font-weight: 700; }
+.calendar-grid button.today { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.calendar-grid button.selected { background: var(--accent); color: #fff; font-weight: 700; }
 .calendar-grid button.has-record::after {
   content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--series-2);
   position: relative; top: 9px;
@@ -229,7 +235,7 @@ body {
   font-size: 13px; font-weight: 600; padding: 8px 0; border-radius: var(--radius-full);
   cursor: pointer;
 }
-.period-tab.active { background: var(--series-1); color: #fff; }
+.period-tab.active { background: var(--accent); color: #fff; }
 
 /* ---------- Card ---------- */
 .card {
@@ -286,10 +292,10 @@ body {
   border: 1px solid var(--border); background: var(--page); color: var(--text-primary);
   font-size: 16px;
 }
-#quickInput:focus { outline: 2px solid var(--series-1); outline-offset: -1px; }
+#quickInput:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .add-btn {
   width: 46px; height: 46px; border: none; border-radius: var(--radius-md);
-  background: var(--series-1); color: #fff; display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center;
   cursor: pointer; flex-shrink: 0;
 }
 .add-btn:active { opacity: 0.85; }
@@ -307,7 +313,7 @@ body {
 }
 
 .advanced-toggle {
-  border: none; background: transparent; color: var(--series-1); font-size: 13px; font-weight: 600;
+  border: none; background: transparent; color: var(--accent); font-size: 13px; font-weight: 600;
   padding: 10px 2px 0; cursor: pointer;
 }
 .advanced-fields { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
@@ -320,7 +326,7 @@ body {
 /* ---------- Records ---------- */
 .records-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .records-head h2 { font-size: 15px; margin: 0; }
-.text-btn { border: none; background: transparent; color: var(--series-1); font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px; }
+.text-btn { border: none; background: transparent; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px; }
 .text-btn.danger { color: var(--expense-color); }
 
 .records-list { display: flex; flex-direction: column; }
@@ -356,7 +362,7 @@ body {
 .edit-actions .text-btn.danger { flex: 0 0 auto; }
 .save-btn {
   flex: 1; height: 44px; border: none; border-radius: var(--radius-md);
-  background: var(--series-1); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer;
+  background: var(--accent); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer;
 }
 .save-btn:active { opacity: 0.85; }
 
@@ -384,7 +390,7 @@ body {
   background: var(--page); color: var(--text-primary); font-size: 12px; cursor: pointer;
 }
 .category-grid button .dot { width: 16px; height: 16px; border-radius: 50%; }
-.category-grid button.selected { box-shadow: inset 0 0 0 2px var(--series-1); }
+.category-grid button.selected { box-shadow: inset 0 0 0 2px var(--accent); }
 
 .category-edit-list { display: flex; flex-direction: column; gap: 10px; }
 .category-edit-item { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; }
@@ -416,7 +422,7 @@ body {
 
 .add-category-btn {
   width: 100%; margin-top: 10px; height: 42px; border-radius: var(--radius-md);
-  border: 1px dashed var(--border); background: transparent; color: var(--series-1); font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 1px dashed var(--border); background: transparent; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer;
 }
 
 .divider { border: none; border-top: 1px solid var(--gridline); margin: 16px 0; }
@@ -431,12 +437,12 @@ body {
   font-size: 13px; color: var(--text-secondary);
 }
 .version-btn #currentVersionTag { color: var(--text-primary); font-weight: 700; }
-.version-btn-cta { color: var(--series-1); font-weight: 600; }
+.version-btn-cta { color: var(--accent); font-weight: 600; }
 
 .changelog-list { display: flex; flex-direction: column; gap: 18px; }
 .changelog-entry-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 .changelog-version { font-size: 14px; font-weight: 700; color: var(--text-primary); }
-.changelog-name { font-size: 13px; font-weight: 600; color: var(--series-1); }
+.changelog-name { font-size: 13px; font-weight: 600; color: var(--accent); }
 .changelog-date { font-size: 11px; color: var(--text-muted); margin-left: auto; }
 .changelog-entry ul { margin: 0; padding-left: 1.1em; }
 .changelog-entry li { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; line-height: 1.5; }

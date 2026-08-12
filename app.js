@@ -10,8 +10,11 @@ import {
   var SVG_NS = 'http://www.w3.org/2000/svg';
   // 給家人/自己看的白話版更新紀錄，完整技術細節在 CLAUDE.md。新增版本時陣列開頭插入一筆，
   // CURRENT_VERSION 記得跟著更新（設定頁的版本號、標籤都是抓這個常數）。
-  var CURRENT_VERSION = 'v2.1';
+  var CURRENT_VERSION = 'v2.2';
   var CHANGELOG = [
+    { version: 'v2.2', name: '介面改成金色主題', date: '2026-08-12', notes: [
+      '按鈕、選中狀態、連結文字等介面強調色改成呼應主畫面圖示的金色，跟分類自己的顏色是分開的，不會動到你設定過的分類色'
+    ] },
     { version: 'v2.1', name: '圖示改版', date: '2026-08-12', notes: [
       '主畫面圖示重新設計，改成金幣造型的 $ 符號圖示'
     ] },
