@@ -1,4 +1,4 @@
-var CACHE_NAME = 'budget-app-v2';
+var CACHE_NAME = 'budget-app-v3';
 var ASSETS = [
   './',
   './index.html',
@@ -7,7 +7,8 @@ var ASSETS = [
   './firebase-config.js',
   './manifest.json',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', function (event) {
