@@ -38,7 +38,8 @@ if (isLocalDev) {
 }
 fsMod.enableIndexedDbPersistence(db).catch(function () { /* multiple tabs open, or unsupported browser - app still works online */ });
 
-export var signInWithPopup = authMod.signInWithPopup;
+export var signInWithRedirect = authMod.signInWithRedirect;
+export var getRedirectResult = authMod.getRedirectResult;
 export var signOut = authMod.signOut;
 export var onAuthStateChanged = authMod.onAuthStateChanged;
 export var collection = fsMod.collection;

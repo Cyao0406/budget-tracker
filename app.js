@@ -1,6 +1,6 @@
 import {
   auth, db, googleProvider,
-  signInWithPopup, signOut, onAuthStateChanged,
+  signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
   collection, doc, onSnapshot, writeBatch, getDocs
 } from './firebase-config.js';
 
@@ -218,6 +218,12 @@ import {
   }
 
   function initCloudSync() {
+    // 頁面從 Google 導回來後檢查一次 redirect 的結果，這裡才抓得到 redirect 流程本身的錯誤
+    // （帳號被拒絕、網域未授權等）；正常登入成功與否還是看下面的 onAuthStateChanged。
+    getRedirectResult(auth).catch(function (e) {
+      console.error('redirect sign-in failed', e);
+      showToast('登入失敗：' + (e && e.message ? e.message : '未知錯誤'));
+    });
     onAuthStateChanged(auth, function (user) {
       if (user) {
         handleSignedIn(user);
@@ -944,7 +950,10 @@ import {
     });
 
     els.googleSignInBtn.addEventListener('click', function () {
-      signInWithPopup(auth, googleProvider).catch(function (e) {
+      // 用 redirect 不用 popup：iOS Safari（尤其加到主畫面的 PWA 獨立模式）常常沒辦法讓
+      // 彈出視窗把登入結果傳回原頁面，畫面會卡一下然後跳回去、但沒有真的登入。redirect
+      // 是整頁導去 Google 再導回來，不依賴跳出視窗跟原頁面之間的溝通，比較穩。
+      signInWithRedirect(auth, googleProvider).catch(function (e) {
         showToast('登入失敗：' + (e && e.message ? e.message : '未知錯誤'));
       });
     });
