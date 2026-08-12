@@ -34,6 +34,9 @@ export var firebaseApp = appMod.initializeApp(firebaseConfig);
 export var auth = authMod.getAuth(firebaseApp);
 export var db = fsMod.getFirestore(firebaseApp);
 export var googleProvider = new authMod.GoogleAuthProvider();
+// 強制每次都跳出 Google 帳號選擇畫面，不要自動沿用瀏覽器記住的上一個帳號——
+// 不然被允許名單擋掉登出後，再按登入會直接又用同一個被拒絕的帳號，選不到別的帳號。
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 if (isLocalDev) {
   authMod.connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
