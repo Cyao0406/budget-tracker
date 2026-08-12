@@ -957,7 +957,11 @@ import {
         showToast('登入失敗：' + (e && e.message ? e.message : '未知錯誤'));
       });
     });
-    els.signOutBtn.addEventListener('click', function () { signOut(auth); });
+    els.signOutBtn.addEventListener('click', function () {
+      // 登出後直接整頁重整：保證畫面狀態一定是乾淨的，不會有「登出了但畫面/記憶體裡
+      // 還殘留雲端帳號資料」這種曖昧狀態，跟「清除所有資料」用同一個防禦邏輯。
+      signOut(auth).finally(function () { location.reload(); });
+    });
 
     els.settingsBtn.addEventListener('click', function () {
       state.editingCategoryContext = state.addType;
