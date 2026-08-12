@@ -87,6 +87,8 @@
         <button type="button" class="chart-toggle-btn" data-chart-type="income" role="tab" aria-selected="false">收入佔比</button>
       </div>
 
+      <button type="button" class="chart-filter-clear-btn hidden" id="chartFilterClearBtn"></button>
+
       <div class="chart-wrap">
         <svg id="pieChart" viewBox="0 0 200 200" width="200" height="200" role="img" aria-labelledby="pieChartDesc"></svg>
         <div class="chart-empty hidden" id="chartEmpty">這段期間還沒有紀錄</div>
@@ -162,7 +164,10 @@
         <h2>紀錄</h2>
         <button type="button" class="text-btn" id="exportBtn">匯出 CSV</button>
       </div>
-      <p class="hint">點一下紀錄可以編輯</p>
+      <div class="records-search">
+        <input type="search" id="recordsSearchInput" placeholder="搜尋分類、備註或金額" aria-label="搜尋紀錄">
+      </div>
+      <p class="hint">點一下紀錄可以編輯，搜尋時會找全部紀錄（不限目前日期範圍）</p>
       <div id="recordsList" class="records-list">
         <p class="empty-msg" id="recordsEmptyMsg">這段期間還沒有紀錄，開始記一筆吧！</p>
       </div>
@@ -188,6 +193,10 @@
         <label class="field">
           <span>日期</span>
           <input type="date" id="editDate">
+        </label>
+        <label class="field">
+          <span>時間</span>
+          <input type="time" id="editTime">
         </label>
         <label class="field">
           <span>分類</span>
@@ -271,7 +280,10 @@
     </div>
   </div>
 
-  <div class="toast hidden" id="toast"></div>
+  <div class="toast hidden" id="toast">
+    <span id="toastMsg"></span>
+    <button type="button" class="toast-undo-btn hidden" id="toastUndoBtn">復原</button>
+  </div>
 
 </div>
 

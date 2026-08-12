@@ -10,8 +10,15 @@ import {
   var SVG_NS = 'http://www.w3.org/2000/svg';
   // 給家人/自己看的白話版更新紀錄，完整技術細節在 CLAUDE.md。新增版本時陣列開頭插入一筆，
   // CURRENT_VERSION 記得跟著更新（設定頁的版本號、標籤都是抓這個常數）。
-  var CURRENT_VERSION = 'v2.2';
+  var CURRENT_VERSION = 'v2.3';
   var CHANGELOG = [
+    { version: 'v2.3', name: '五項小功能更新', date: '2026-08-12', notes: [
+      '紀錄列表顯示記帳時間，編輯紀錄時可以手動調整（例如隔天才補記，可以改回實際發生的時間）',
+      '分類可以加一個 emoji 圖示（設定裡分類名稱旁邊），列表項目更好辨認',
+      '刪除紀錄改成「已刪除」提示 + 復原按鈕，取代原本要再按一次確認的彈窗',
+      '紀錄列表新增搜尋框，可以用分類、備註關鍵字或金額找到任何一筆紀錄，不限目前選的日/週/月',
+      '圓餅圖或圖例可以點選單一分類篩選，只看該分類的金額與紀錄，再點一次或按「清除篩選」恢復'
+    ] },
     { version: 'v2.2', name: '介面改成金色主題', date: '2026-08-12', notes: [
       '按鈕、選中狀態、連結文字等介面強調色改成呼應主畫面圖示的金色，跟分類自己的顏色是分開的，不會動到你設定過的分類色'
     ] },
@@ -48,20 +55,20 @@ import {
   var PASTEL_SLOTS = ['--pastel-1', '--pastel-2', '--pastel-3', '--pastel-4', '--pastel-5', '--pastel-6', '--pastel-7', '--pastel-8'];
 
   var DEFAULT_EXPENSE_CATS = [
-    { name: '餐飲', colorVar: '--series-1', keywords: ['早餐', '午餐', '晚餐', '消夜', '宵夜', '咖啡', '飲料', '超商', '全家', '7-11', '711', '7-eleven', '萊爾富', 'ok超商', '餐廳', '小吃', '火鍋', '便當', '飲品', '手搖', '星巴克', '麥當勞', '肯德基', '拉麵', '牛肉麵', '早午餐', '外送', 'foodpanda', 'ubereats', '飲食費'] },
-    { name: '交通', colorVar: '--series-2', keywords: ['捷運', '公車', '計程車', 'uber', '加油', '停車', '高鐵', '台鐵', '悠遊卡', '機車', '油錢', '過路費', '停車費', '火車', '客運', '交通費'] },
-    { name: '購物', colorVar: '--series-3', keywords: ['網購', '蝦皮', 'momo', '衣服', '鞋子', '日用品', '大賣場', 'costco', '好市多', '家樂福', '全聯', '寶雅', '無印良品', 'ikea', '購物', '美容'] },
-    { name: '娛樂', colorVar: '--series-4', keywords: ['電影', '遊戲', 'ktv', '唱歌', '旅遊', '訂閱', 'netflix', 'spotify', 'disney', '展覽', '演唱會', '娛樂費', '訂閱類娛樂費', '旅遊費'] },
-    { name: '居家', colorVar: '--series-5', keywords: ['房租', '水電', '瓦斯', '網路費', '管理費', '家具', '電費', '水費', '房貸', '水電費', '電話費', '房費', '家庭開銷'] },
-    { name: '醫療', colorVar: '--series-6', keywords: ['藥局', '醫院', '診所', '健保', '掛號費', '牙醫', '眼科', '醫療費'] },
-    { name: '教育', colorVar: '--series-7', keywords: ['學費', '書籍', '課程', '補習', '文具', '教材', '教育費'] },
-    { name: '其他', colorVar: '--series-8', keywords: [], fallback: true }
+    { name: '餐飲', colorVar: '--series-1', icon: '🍚', keywords: ['早餐', '午餐', '晚餐', '消夜', '宵夜', '咖啡', '飲料', '超商', '全家', '7-11', '711', '7-eleven', '萊爾富', 'ok超商', '餐廳', '小吃', '火鍋', '便當', '飲品', '手搖', '星巴克', '麥當勞', '肯德基', '拉麵', '牛肉麵', '早午餐', '外送', 'foodpanda', 'ubereats', '飲食費'] },
+    { name: '交通', colorVar: '--series-2', icon: '🚗', keywords: ['捷運', '公車', '計程車', 'uber', '加油', '停車', '高鐵', '台鐵', '悠遊卡', '機車', '油錢', '過路費', '停車費', '火車', '客運', '交通費'] },
+    { name: '購物', colorVar: '--series-3', icon: '🛍️', keywords: ['網購', '蝦皮', 'momo', '衣服', '鞋子', '日用品', '大賣場', 'costco', '好市多', '家樂福', '全聯', '寶雅', '無印良品', 'ikea', '購物', '美容'] },
+    { name: '娛樂', colorVar: '--series-4', icon: '🎮', keywords: ['電影', '遊戲', 'ktv', '唱歌', '旅遊', '訂閱', 'netflix', 'spotify', 'disney', '展覽', '演唱會', '娛樂費', '訂閱類娛樂費', '旅遊費'] },
+    { name: '居家', colorVar: '--series-5', icon: '🏠', keywords: ['房租', '水電', '瓦斯', '網路費', '管理費', '家具', '電費', '水費', '房貸', '水電費', '電話費', '房費', '家庭開銷'] },
+    { name: '醫療', colorVar: '--series-6', icon: '💊', keywords: ['藥局', '醫院', '診所', '健保', '掛號費', '牙醫', '眼科', '醫療費'] },
+    { name: '教育', colorVar: '--series-7', icon: '📚', keywords: ['學費', '書籍', '課程', '補習', '文具', '教材', '教育費'] },
+    { name: '其他', colorVar: '--series-8', icon: '📦', keywords: [], fallback: true }
   ];
   var DEFAULT_INCOME_CATS = [
-    { name: '薪資', colorVar: '--series-1', keywords: ['薪水', '薪資', '工資'] },
-    { name: '獎金', colorVar: '--series-2', keywords: ['獎金', '紅包', '分紅'] },
-    { name: '投資', colorVar: '--series-3', keywords: ['股息', '配息', '利息', '投資', '股票'] },
-    { name: '其他收入', colorVar: '--series-4', keywords: [], fallback: true }
+    { name: '薪資', colorVar: '--series-1', icon: '💰', keywords: ['薪水', '薪資', '工資'] },
+    { name: '獎金', colorVar: '--series-2', icon: '🎁', keywords: ['獎金', '紅包', '分紅'] },
+    { name: '投資', colorVar: '--series-3', icon: '📈', keywords: ['股息', '配息', '利息', '投資', '股票'] },
+    { name: '其他收入', colorVar: '--series-4', icon: '💵', keywords: [], fallback: true }
   ];
 
   // MoneyNote 匯出檔的分類名稱 -> 對應本 App 既有分類（真的是同一件事才合併，不是同一件事的一律保留原名各自成類）
@@ -99,6 +106,11 @@ import {
     return sign + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
   }
   function shortDate(d) { return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()); }
+  function formatTime(ms) {
+    if (!ms) return '';
+    var d = new Date(ms);
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
 
   // ---------- state ----------
   var state = {
@@ -114,7 +126,9 @@ import {
     editingCategoryContext: 'expense',
     categoryPickContext: 'quickadd',
     editingRecordId: null,
-    editRecordType: 'expense'
+    editRecordType: 'expense',
+    searchQuery: '',
+    chartFilterCategoryId: null
   };
 
   // ---------- storage ----------
@@ -328,10 +342,26 @@ import {
     return [startOfMonth(d), endOfMonth(d)];
   }
   function filteredRecords() {
-    var range = getRange();
-    var startKey = toKey(range[0]), endKey = toKey(range[1]);
-    return state.records.filter(function (r) { return r.date >= startKey && r.date <= endKey; })
-      .sort(function (a, b) { return a.date === b.date ? b.createdAt - a.createdAt : (a.date < b.date ? 1 : -1); });
+    var q = state.searchQuery.trim().toLowerCase();
+    var recs;
+    if (q) {
+      // 搜尋時故意不限制日期範圍：搜尋的目的就是「不記得是哪一天記的，用關鍵字找」，
+      // 限制在目前選到的日/週/月反而失去搜尋的意義。
+      recs = state.records.filter(function (r) {
+        var cat = findCat(r.categoryId);
+        var catName = cat ? cat.name.toLowerCase() : '';
+        var note = (r.note || '').toLowerCase();
+        return note.indexOf(q) !== -1 || catName.indexOf(q) !== -1 || String(r.amount).indexOf(q) !== -1;
+      });
+    } else {
+      var range = getRange();
+      var startKey = toKey(range[0]), endKey = toKey(range[1]);
+      recs = state.records.filter(function (r) { return r.date >= startKey && r.date <= endKey; });
+    }
+    if (state.chartFilterCategoryId) {
+      recs = recs.filter(function (r) { return r.categoryId === state.chartFilterCategoryId; });
+    }
+    return recs.sort(function (a, b) { return a.date === b.date ? b.createdAt - a.createdAt : (a.date < b.date ? 1 : -1); });
   }
   function periodLabelText() {
     var d = state.selectedDate;
@@ -349,9 +379,10 @@ import {
       'quickAddForm', 'quickInput', 'addBtn', 'parsePreview', 'parseAmount', 'parseNote', 'parseCategoryChip',
       'advancedToggle', 'advancedFields', 'manualCategory', 'manualAmount', 'manualNote',
       'categoryPickSheet', 'categoryPickBackdrop', 'categoryPickGrid', 'categoryPickClose',
-      'recordsList', 'exportBtn', 'settingsSheet', 'settingsBackdrop', 'settingsCloseBtn', 'categoryEditList',
-      'addCategoryBtn', 'settingsExportBtn', 'importFileInput', 'resetDataBtn', 'toast',
-      'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editCategory',
+      'recordsList', 'recordsSearchInput', 'chartFilterClearBtn',
+      'exportBtn', 'settingsSheet', 'settingsBackdrop', 'settingsCloseBtn', 'categoryEditList',
+      'addCategoryBtn', 'settingsExportBtn', 'importFileInput', 'resetDataBtn', 'toast', 'toastMsg', 'toastUndoBtn',
+      'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editTime', 'editCategory',
       'editAmount', 'editNote', 'editDeleteBtn', 'editSaveBtn',
       'mergeCategorySheet', 'mergeCategoryBackdrop', 'mergeCategoryTitle', 'mergeCategoryGrid', 'mergeCategoryCancel',
       'authSignedOut', 'authSignedIn', 'authEmail', 'googleSignInBtn', 'signOutBtn',
@@ -410,6 +441,13 @@ import {
       circle.setAttribute('stroke-dasharray', len + ' ' + (circumference - len));
       circle.setAttribute('stroke-dashoffset', String(-offset));
       circle.setAttribute('transform', 'rotate(-90 ' + cx + ' ' + cy + ')');
+      circle.style.cursor = 'pointer';
+      circle.addEventListener('click', function (catId) {
+        return function () {
+          state.chartFilterCategoryId = state.chartFilterCategoryId === catId ? null : catId;
+          renderAll();
+        };
+      }(seg.id));
       svg.appendChild(circle);
       offset += frac * circumference;
     });
@@ -436,7 +474,16 @@ import {
     els.statIncome.textContent = formatMoney(totalIncome);
     els.statBalance.textContent = formatMoney(totalIncome - totalExpense);
     els.periodRangeLabel.textContent = periodLabelText();
-    document.querySelector('.records-head h2').textContent = '紀錄・' + periodLabelText();
+    var q = state.searchQuery.trim();
+    document.querySelector('.records-head h2').textContent = q ? '紀錄・搜尋「' + q + '」' : '紀錄・' + periodLabelText();
+
+    if (state.chartFilterCategoryId) {
+      var fcat = findCat(state.chartFilterCategoryId);
+      els.chartFilterClearBtn.textContent = '篩選：' + catDisplayName(fcat) + '　✕ 清除篩選';
+      els.chartFilterClearBtn.classList.remove('hidden');
+    } else {
+      els.chartFilterClearBtn.classList.add('hidden');
+    }
 
     var byCat = {};
     recs.forEach(function (r) {
@@ -445,7 +492,7 @@ import {
     });
     var data = Object.keys(byCat).map(function (id) {
       var cat = findCat(id);
-      return { name: cat ? cat.name : '（已刪除分類）', colorVar: cat ? cat.colorVar : '--series-8', value: byCat[id] };
+      return { id: id, name: catDisplayName(cat), colorVar: cat ? cat.colorVar : '--series-8', value: byCat[id] };
     }).sort(function (a, b) { return b.value - a.value; });
     var total = data.reduce(function (s, d) { return s + d.value; }, 0);
 
@@ -454,16 +501,24 @@ import {
       buildDonut(els.pieChart, data, total);
     } else {
       els.pieChart.innerHTML = '';
+      els.chartEmpty.textContent = state.chartFilterCategoryId ? '這個分類這段期間沒有紀錄' : '這段期間還沒有紀錄';
       els.chartEmpty.classList.remove('hidden');
     }
     els.chartLegend.innerHTML = '';
     data.forEach(function (d) {
       var li = document.createElement('li');
       var pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
+      if (state.chartFilterCategoryId === d.id) li.classList.add('selected');
       li.innerHTML = '<span class="dot" style="background:var(' + d.colorVar + ')"></span>' +
         '<span class="name">' + escapeHtml(d.name) + '</span>' +
         '<span class="amt">' + formatMoney(d.value) + '</span>' +
         '<span class="pct">' + pct + '%</span>';
+      li.addEventListener('click', function (catId) {
+        return function () {
+          state.chartFilterCategoryId = state.chartFilterCategoryId === catId ? null : catId;
+          renderAll();
+        };
+      }(d.id));
       els.chartLegend.appendChild(li);
     });
   }
@@ -473,6 +528,10 @@ import {
     return String(s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+  }
+  function catDisplayName(c) {
+    if (!c) return '（已刪除分類）';
+    return (c.icon ? c.icon + ' ' : '') + c.name;
   }
   function renderRecordsList() {
     var recs = filteredRecords();
@@ -500,20 +559,16 @@ import {
       row.innerHTML =
         '<span class="record-dot" style="background:var(' + (cat ? cat.colorVar : '--series-8') + ')"></span>' +
         '<span class="record-main">' +
-          '<div class="record-cat">' + escapeHtml(cat ? cat.name : '（已刪除分類）') + '</div>' +
+          '<div class="record-cat">' + escapeHtml(catDisplayName(cat)) + '</div>' +
           (r.note ? '<div class="record-note">' + escapeHtml(r.note) + '</div>' : '') +
+          '<div class="record-time">' + formatTime(r.createdAt) + '</div>' +
         '</span>' +
         '<span class="record-amt ' + r.type + '">' + (r.type === 'expense' ? '-' : '+') + formatMoney(r.amount).replace('-', '') + '</span>' +
         '<span class="record-chevron">›</span>' +
         '<button type="button" class="record-del" aria-label="刪除">✕</button>';
       row.querySelector('.record-del').addEventListener('click', function (e) {
         e.stopPropagation();
-        var label = (cat ? cat.name : '') + ' ' + formatMoney(r.amount);
-        if (window.confirm('刪除這筆紀錄？\n' + label)) {
-          state.records = state.records.filter(function (x) { return x.id !== r.id; });
-          saveRecords();
-          renderAll();
-        }
+        deleteRecordWithUndo(r.id);
       });
       row.addEventListener('click', function () { openEditRecord(r.id); });
       els.recordsList.appendChild(row);
@@ -534,7 +589,7 @@ import {
     els.parseAmount.textContent = parsed.amount != null ? formatMoney(parsed.amount) : '尚未偵測到金額';
     els.parseNote.textContent = parsed.note || '（無備註）';
     var cat = effectiveCategory();
-    els.parseCategoryChip.textContent = cat.name;
+    els.parseCategoryChip.textContent = catDisplayName(cat);
     els.parseCategoryChip.style.background = 'var(' + cat.colorVar + ')';
     syncManualCategorySelect();
   }
@@ -544,7 +599,7 @@ import {
   }
   function populateManualCategorySelect() {
     var cats = catsOfType(state.addType);
-    els.manualCategory.innerHTML = cats.map(function (c) { return '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>'; }).join('');
+    els.manualCategory.innerHTML = cats.map(function (c) { return '<option value="' + c.id + '">' + escapeHtml(catDisplayName(c)) + '</option>'; }).join('');
     syncManualCategorySelect();
   }
 
@@ -558,7 +613,7 @@ import {
       var btn = document.createElement('button');
       btn.type = 'button';
       if (c.id === current.id) btn.classList.add('selected');
-      btn.innerHTML = '<span class="dot" style="background:var(' + c.colorVar + ')"></span><span>' + escapeHtml(c.name) + '</span>';
+      btn.innerHTML = '<span class="dot" style="background:var(' + c.colorVar + ')"></span><span>' + escapeHtml(catDisplayName(c)) + '</span>';
       btn.addEventListener('click', function () {
         state.tempCategoryOverride = c.id;
         state.manualCategoryTouched = true;
@@ -573,7 +628,7 @@ import {
   // ---------- edit record ----------
   function populateEditCategorySelect(type, selectedId) {
     var cats = catsOfType(type);
-    els.editCategory.innerHTML = cats.map(function (c) { return '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>'; }).join('');
+    els.editCategory.innerHTML = cats.map(function (c) { return '<option value="' + c.id + '">' + escapeHtml(catDisplayName(c)) + '</option>'; }).join('');
     var stillValid = cats.some(function (c) { return c.id === selectedId; });
     els.editCategory.value = stillValid ? selectedId : fallbackCat(type).id;
   }
@@ -590,6 +645,7 @@ import {
     state.editingRecordId = recordId;
     setEditType(r.type, r.categoryId);
     els.editDate.value = r.date;
+    els.editTime.value = formatTime(r.createdAt) || '00:00';
     els.editAmount.value = r.amount;
     els.editNote.value = r.note || '';
     els.editRecordSheet.classList.remove('hidden');
@@ -603,7 +659,7 @@ import {
     siblings.forEach(function (s) {
       var btn = document.createElement('button');
       btn.type = 'button';
-      btn.innerHTML = '<span class="dot" style="background:var(' + s.colorVar + ')"></span><span>' + escapeHtml(s.name) + (s.fallback ? '（收容分類）' : '') + '</span>';
+      btn.innerHTML = '<span class="dot" style="background:var(' + s.colorVar + ')"></span><span>' + escapeHtml(catDisplayName(s)) + (s.fallback ? '（收容分類）' : '') + '</span>';
       btn.addEventListener('click', function () { mergeDeleteCategory(c, s); });
       els.mergeCategoryGrid.appendChild(btn);
     });
@@ -647,6 +703,7 @@ import {
       item.innerHTML =
         '<div class="category-edit-item-head">' +
           '<button type="button" class="dot color-dot-btn" style="background:var(' + c.colorVar + ')" aria-label="選擇顏色"></button>' +
+          '<input type="text" class="icon-input" maxlength="4" placeholder="🏷️" value="' + escapeHtml(c.icon || '') + '" aria-label="分類圖示 emoji（選填）">' +
           '<input type="text" value="' + escapeHtml(c.name) + '">' +
           '<button type="button" class="del-cat-btn">刪除</button>' +
         '</div>' +
@@ -659,7 +716,13 @@ import {
         '<p class="kw-label">自動分類關鍵字（用逗號分隔）</p>' +
         '<textarea>' + escapeHtml(c.keywords.join('、')) + '</textarea>';
 
-      var nameInput = item.querySelector('input');
+      var iconInput = item.querySelector('.icon-input');
+      iconInput.addEventListener('change', function () {
+        c.icon = iconInput.value.trim().slice(0, 4);
+        saveCategories();
+        renderAll();
+      });
+      var nameInput = item.querySelector('.category-edit-item-head input[type="text"]:not(.icon-input)');
       nameInput.addEventListener('change', function () {
         c.name = nameInput.value.trim() || c.name;
         saveCategories();
@@ -736,7 +799,7 @@ import {
   function findOrCreateCategoryByName(type, name, keywordsIfCreated) {
     var cat = state.categories.find(function (c) { return c.type === type && c.name === name; });
     if (!cat) {
-      cat = { id: uid(), type: type, name: name || (type === 'expense' ? '其他' : '其他收入'), colorVar: nextColorVar(type), keywords: keywordsIfCreated ? keywordsIfCreated.slice() : [], fallback: false };
+      cat = { id: uid(), type: type, name: name || (type === 'expense' ? '其他' : '其他收入'), colorVar: nextColorVar(type), icon: '', keywords: keywordsIfCreated ? keywordsIfCreated.slice() : [], fallback: false };
       state.categories.push(cat);
     }
     return cat;
@@ -818,11 +881,43 @@ import {
 
   // ---------- toast ----------
   var toastTimer = null;
+  var toastUndoHandler = null;
+  function hideToast() {
+    els.toast.classList.add('hidden');
+    els.toastUndoBtn.classList.add('hidden');
+    toastUndoHandler = null;
+  }
   function showToast(msg) {
-    els.toast.textContent = msg;
-    els.toast.classList.remove('hidden');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { els.toast.classList.add('hidden'); }, 1800);
+    els.toastMsg.textContent = msg;
+    els.toastUndoBtn.classList.add('hidden');
+    toastUndoHandler = null;
+    els.toast.classList.remove('hidden');
+    toastTimer = setTimeout(hideToast, 1800);
+  }
+  // 帶「復原」按鈕的 toast，時間拉長到 5 秒給使用者足夠時間反應；逾時沒點就當作真的要刪除
+  // （其實刪除動作在呼叫這個函式之前就已經做完了，這裡只是留一個「反悔」的窗口）。
+  function showUndoToast(msg, onUndo) {
+    clearTimeout(toastTimer);
+    els.toastMsg.textContent = msg;
+    toastUndoHandler = onUndo;
+    els.toastUndoBtn.classList.remove('hidden');
+    els.toast.classList.remove('hidden');
+    toastTimer = setTimeout(hideToast, 5000);
+  }
+  function deleteRecordWithUndo(recordId) {
+    var idx = state.records.findIndex(function (x) { return x.id === recordId; });
+    if (idx === -1) return;
+    var removed = state.records[idx];
+    state.records.splice(idx, 1);
+    saveRecords();
+    renderAll();
+    var cat = findCat(removed.categoryId);
+    showUndoToast('已刪除　' + catDisplayName(cat) + ' ' + formatMoney(removed.amount), function () {
+      state.records.push(removed);
+      saveRecords();
+      renderAll();
+    });
   }
 
   // ---------- master render ----------
@@ -876,12 +971,24 @@ import {
     Array.prototype.forEach.call(document.querySelectorAll('.chart-toggle-btn'), function (btn) {
       btn.addEventListener('click', function () {
         state.chartType = btn.dataset.chartType;
+        state.chartFilterCategoryId = null; // 支出/收入分類是不同組，切換分頁時舊的分類篩選已經沒有意義
         Array.prototype.forEach.call(document.querySelectorAll('.chart-toggle-btn'), function (b) {
           b.classList.toggle('active', b === btn);
           b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
         });
         renderSummary();
       });
+    });
+
+    ['input', 'search'].forEach(function (evt) {
+      els.recordsSearchInput.addEventListener(evt, function () {
+        state.searchQuery = els.recordsSearchInput.value;
+        renderAll();
+      });
+    });
+    els.chartFilterClearBtn.addEventListener('click', function () {
+      state.chartFilterCategoryId = null;
+      renderAll();
     });
 
     Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-type]'), function (btn) {
@@ -932,26 +1039,25 @@ import {
       if (!amount || amount <= 0) { showToast('請輸入有效金額'); els.editAmount.focus(); return; }
       var dateVal = els.editDate.value;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) { showToast('請選擇日期'); return; }
+      var timeVal = els.editTime.value || '00:00';
+      var dp = dateVal.split('-').map(Number);
+      var tp = timeVal.split(':').map(Number);
       r.type = state.editRecordType;
       r.date = dateVal;
       r.categoryId = els.editCategory.value;
       r.amount = amount;
       r.note = els.editNote.value.trim();
+      r.createdAt = new Date(dp[0], dp[1] - 1, dp[2], tp[0] || 0, tp[1] || 0).getTime();
       saveRecords();
       closeEditRecord();
       renderAll();
       showToast('已更新紀錄');
     });
     els.editDeleteBtn.addEventListener('click', function () {
-      var r = state.records.find(function (x) { return x.id === state.editingRecordId; });
-      if (!r) return;
-      var cat = findCat(r.categoryId);
-      if (!window.confirm('刪除這筆紀錄？\n' + (cat ? cat.name : '') + ' ' + formatMoney(r.amount))) return;
-      state.records = state.records.filter(function (x) { return x.id !== r.id; });
-      saveRecords();
+      var recordId = state.editingRecordId;
+      if (!recordId) return;
       closeEditRecord();
-      renderAll();
-      showToast('已刪除');
+      deleteRecordWithUndo(recordId);
     });
 
     els.quickAddForm.addEventListener('submit', function (e) {
@@ -1040,13 +1146,18 @@ import {
       });
     });
     els.addCategoryBtn.addEventListener('click', function () {
-      var cat = { id: uid(), type: state.editingCategoryContext, name: '新分類', colorVar: nextColorVar(state.editingCategoryContext), keywords: [], fallback: false };
+      var cat = { id: uid(), type: state.editingCategoryContext, name: '新分類', colorVar: nextColorVar(state.editingCategoryContext), icon: '', keywords: [], fallback: false };
       state.categories.push(cat);
       saveCategories();
       renderCategoryEditList();
-      var inputs = els.categoryEditList.querySelectorAll('.category-edit-item-head input[type="text"]');
+      var inputs = els.categoryEditList.querySelectorAll('.category-edit-item-head input[type="text"]:not(.icon-input)');
       var last = inputs[inputs.length - 1];
       if (last) { last.focus(); last.select(); }
+    });
+
+    els.toastUndoBtn.addEventListener('click', function () {
+      if (toastUndoHandler) toastUndoHandler();
+      hideToast();
     });
   }
 
