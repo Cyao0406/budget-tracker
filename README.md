@@ -2,6 +2,8 @@
 
 快速輸入自動分類的個人記帳 PWA。可在 iPhone / iPad / 筆電瀏覽器直接使用，也能「加入主畫面」變成類 App 圖示。
 
+**線上網址：https://budget-tracker-8edd1.firebaseapp.com/**（部署在 Firebase Hosting，登入雲端同步一定要用這個網址，GitHub Pages 那份僅保留原始碼備份用）
+
 ## 技術
 
 前端 HTML / CSS / JS（無建置流程），資料預設存在瀏覽器 `localStorage`（不登入也能正常使用）。登入 Google 帳號後會額外背景同步到 Firebase（Firestore），多裝置登入同帳號會自動同步。
@@ -9,7 +11,7 @@
 - `index.html` — 頁面結構（含登入畫面）
 - `style.css` — 樣式（淺色/深色皆支援）
 - `app.js` — 所有邏輯（資料模型、自動分類、圖表、CRUD、雲端同步）
-- `firebase-config.js` — Firebase 初始化（本機自動接 emulator，正式站需自行填入專案 config）
+- `firebase-config.js` — Firebase 初始化（本機自動接 emulator，正式站已填入專案 config）
 - `firestore.rules` / `firebase.json` — 雲端安全規則與 emulator 設定
 - `manifest.json` / `sw.js` / `icons/` — PWA 設定與離線快取
 

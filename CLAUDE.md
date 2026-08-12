@@ -17,10 +17,12 @@
 - **雲端同步（選用，Firebase）**：不登入完全不受影響、行為跟純單機版一樣；登入 Google 帳號後資料會背景同步到 Firestore，其他登入同帳號的裝置也會即時收到更新。見下方「雲端同步架構」。
 
 **部署：**
-- GitHub repo：https://github.com/Cyao0406/budget-tracker
-- 線上網址（GitHub Pages）：https://cyao0406.github.io/budget-tracker/
-- 手機用 Safari 開網址 →「加入主畫面」即可像 App 一樣使用
-- Firebase 專案：**尚未建立**，`firebase-config.js` 裡的正式環境設定目前是 `REPLACE_ME` 佔位值，本機/emulator 測試不受影響（見下方指令）。真正要讓雲端同步在正式站上運作，需要使用者本人建立一個免費 Firebase 專案並把 config 貼給我填進去——這步驟需要使用者的 Google 帳號，我沒辦法代勞。
+- GitHub repo：https://github.com/Cyao0406/budget-tracker（原始碼保留在這裡，`git push` 照舊）
+- **正式線上網址：https://budget-tracker-8edd1.firebaseapp.com/**（Firebase Hosting，不是 GitHub Pages 了——原因見下方「已知眉角」的登入那段，`authDomain` 要跟網站同源，GitHub Pages 的 `cyao0406.github.io` 做不到這件事）
+- GitHub Pages（`cyao0406.github.io/budget-tracker/`）程式碼還在、還能開，但**雲端登入在那個網址上不會正常運作**，不要再拿那個網址給使用者用
+- 部署方式：改完程式碼先 `git push`（保留版本記錄），再 `firebase deploy --only hosting` 才會真的更新正式站
+- 手機用 Safari 開 `.firebaseapp.com` 那個網址 →「加入主畫面」即可像 App 一樣使用
+- Firebase 專案：`budget-tracker-8edd1`，`firebase-config.js` 已填入真實 config；本機/emulator 測試不受影響（見下方指令）
 
 ## 技術架構
 
@@ -79,9 +81,11 @@ ROADMAP.md           未來規劃與技術債
 cd "C:\Users\user\OneDrive\桌面\10-19_System_Automation\15 App Projects\budget_tracker_2026"; python -m http.server 8791
 # 開 http://localhost:8791
 
-# 部署（改完code後）
+# 部署（改完code後，兩個都要跑，順序不重要）
 git add -A; git commit -m "說明這次改了什麼"; git push
-# push 後 GitHub Pages 會自動重新部署，通常 1-2 分鐘生效
+firebase deploy --only hosting
+# git push 只是保留版本記錄／備份，正式站（.firebaseapp.com）要 firebase deploy 才會真的更新
+# GitHub Pages 那個網址雖然 push 後也還是會自動重新部署，但不要拿來測登入功能
 
 # 雲端同步本機測試（Firebase Local Emulator Suite，不用真帳號、不用連外網）
 # 需要先裝好：Node.js、firebase-tools（npm i -g firebase-tools）、Java 21+（emulator 依賴）
@@ -99,8 +103,14 @@ cd "C:\Users\user\OneDrive\桌面\10-19_System_Automation\15 App Projects\budget
 - **測試方式**：這個環境沒辦法對瀏覽器截圖，驗證功能都是用 `javascript_tool` 直接操作 DOM（設值、dispatch 事件、讀 innerText/localStorage）取代真人點擊，之後如果继续開發建議延用這個模式驗證，比較快也比較穩定。
 - **MoneyNote CSV 匯入的分類合併**：`MONEYNOTE_MERGE_MAP`（`app.js`）是一份「MoneyNote 分類名稱 → 本 App 既有分類」的白名單對照表，只有**確定是同一件事、只是換個名字**的才會合併（例如「醫療費」→「醫療」、「飲食費」→「餐飲」）。真的沒有對應概念的（目前是「交際費」「煙酒」）會建成獨立新分類，並在 `MONEYNOTE_NEW_CATEGORY_KEYWORDS` 給預設關鍵字，不要空著。之後如果來源 App 的分類名稱變了，或想調整合併規則，改這兩個常數即可，不用動解析邏輯本身。
 - **分類刪除＝可指定合併目標**：刪除分類不是寫死併入收容分類，而是跳出 `mergeCategorySheet` 讓使用者挑一個既有分類當作合併目的地，`mergeDeleteCategory()` 負責搬移紀錄、必要時把目標升格為新的收容分類。這個機制同時也是使用者在「已經匯入過、資料已經在 localStorage 裡」的情況下手動整併重複分類的唯一管道（改了合併對照表不會回溯套用到已存在的分類上）。
-- **Google 登入用 `signInWithRedirect`，不是 `signInWithPopup`**：一開始寫的是 popup，實測在使用者的 iOS Safari（尤其加到主畫面的 PWA 獨立模式）上會卡在「輸入完帳密、驗證通過、頁面轉一下又跳回去，但沒有真的登入」——這是 popup 視窗沒辦法把結果透過 `postMessage` 傳回原頁面的典型症狀。改用 `signInWithRedirect`（整頁導去 Google 再導回來）解決。如果之後這個也在某些瀏覽器情境下不穩，下一步是讓 `authDomain` 跟網站主體同源（例如改用 Firebase Hosting 或自訂網域），因為目前 `authDomain` 是 `budget-tracker-8edd1.firebaseapp.com`、跟 GitHub Pages 的 `cyao0406.github.io` 不同源，Safari 對這種跨網域第三方儲存空間存取本來就限制較多，redirect 只是繞開了 popup 那層，沒有徹底解決跨網域這件事。
-- **Firebase 專案設定走 CLI，不是網頁介面**：使用者在 Firebase Console 網頁上設定 Firestore 規則時卡住（畫面顯示「鎖定狀態」但實際上規則編輯不了、資料庫甚至沒真的建立成功），改用 `firebase login`（device code flow，使用者自己在瀏覽器授權）→ `firebase deploy --only firestore:rules` 一次解決（順便自動建好 Firestore 資料庫）。這台電腦上 `firebase apps:list` / `firebase apps:sdkconfig` 有個已知的 Windows 相關 crash（`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`），但通常在噴出這個 assertion 之前，實際要的資訊已經印出來了，看 stdout 內容通常夠用，不影響指令本身的效果。
+- **Google 登入：正式站是 Firebase Hosting（`budget-tracker-8edd1.firebaseapp.com`），不是 GitHub Pages**：登入這條路踩了好幾層坑，照發生順序記錄，之後不要走回頭路：
+  1. 一開始用 `signInWithPopup` + GitHub Pages（`cyao0406.github.io`），iOS Safari（尤其加到主畫面的 PWA 獨立模式）上會卡在「輸入完帳密、驗證通過、頁面轉一下又跳回去，但沒有真的登入」——popup 視窗沒辦法把結果透過 `postMessage` 傳回原頁面。
+  2. 改成 `signInWithRedirect`，手機好了，但電腦 Chrome 出現一樣症狀——真正原因是 `authDomain`（`budget-tracker-8edd1.firebaseapp.com`）跟網站網域（`cyao0406.github.io`）不同源，2024 年中之後 Chrome/Firefox/Safari 全部收緊跨網域第三方儲存空間存取，popup 或 redirect 都一樣會卡，跟用哪個 API 無關。
+  3. 搬去 Firebase Hosting 想讓兩邊同源，但一開始用 `budget-tracker-8edd1.web.app` 這個網址，結果 Google 回「要求無效」——因為 Firebase 啟用 Google 登入時，OAuth 用戶端的「已授權重新導向 URI」預設只註冊了 `.firebaseapp.com`，`.web.app` 沒有自動註冊進去。
+  4. 最終解法：`authDomain` 跟使用者實際打開的網址都固定用 **`.firebaseapp.com`**（Firebase 預設、不用手動去 Google Cloud Console 加東西的那個），兩者統一之後才真的正常。`.web.app` 純粹別用來當作雲端同步的入口。
+  - **`.git/` 差點被公開部署**：`firebase.json` 的 hosting ignore 一開始只寫 `"**/.*"`，實測沒有真的排除 `.git/` 底下的內容（第一次部署後 `curl .../,git/config` 回 200），已改成明確加 `.git/**` 才修好，之後要調整 ignore 清單記得用 curl 驗證幾個關鍵路徑，不要只看 glob 寫得對不對。
+- **Firebase 專案設定走 CLI，不是網頁介面**：使用者在 Firebase Console 網頁上設定 Firestore 規則時卡住（畫面顯示「鎖定狀態」但實際上規則編輯不了、資料庫甚至沒真的建立成功），改用 `firebase login`（device code flow，使用者自己在瀏覽器授權）→ `firebase deploy --only firestore:rules` / `firebase deploy --only hosting` 解決。這台電腦上 `firebase apps:list` / `firebase apps:sdkconfig` / `firebase use --add` 有個已知的 Windows 相關 crash（`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`），但通常在噴出這個 assertion 之前，實際要的資訊已經印出來了（或該做的事已經做完只是沒寫檔，例如 `.firebaserc` 要自己手動補），看 stdout 內容通常夠用，不影響指令本身的效果。
+- **`ALLOWED_CLOUD_EMAILS` 白名單（`app.js` 的 `handleSignedIn()`）**：Google Cloud OAuth 同意畫面設定確認是正確的（發布狀態「測試中」、測試使用者只有使用者本人一個信箱），但實測非測試帳號還是能完成登入，原因不明、沒有再花時間往 Google 那邊查。既然 Firestore 規則本來就是照 uid 隔離（不同帳號登入只會各自建立自己空的 uid 資料夾，本來就碰不到別人的資料，不是資料外洩風險），就在應用層加一道自己可驗證的防線：登入後先比對 email 是否在白名單裡，不是就立刻 `signOut()`，不會進到搬遷/同步邏輯。之後如果使用者換 Google 帳號或想開放給家人用，改這個陣列即可。
 - **這個測試環境的瀏覽器 pane 對「module script 靜態 import 跨網域 URL」的處理有問題**：`<script type="module" src="app.js">` 頁面載入時，若 `app.js`（或它 import 的檔案）用**靜態** `import ... from 'https://...'` 直接 import gstatic.com 的網址，會出現 `ERR_NAME_NOT_RESOLVED`；但同一個網址用 `fetch()`、`javascript_tool` 主控台打的 `import()`、或直接瀏覽器網址列導航，全部都正常。目前解法是 `firebase-config.js` 內部一律用**動態** `import()`（`await import(url)`）載入 Firebase SDK，`app.js` 只對同源的 `firebase-config.js` 做靜態 import——這是標準 ES 語法，在真實瀏覽器（含 iOS Safari）行為完全一樣，不是 workaround 出來的偏門寫法，之後要加其他 CDN 依賴時延用同一個模式（動態 import、集中包在一個同源檔案裡）比較不會踩到這個 pane 的限制。
 - **雲端功能的驗證方式分兩軌**：(1) 同步演算法/安全規則（`diffAndPush`、`firestore.rules`、搬遷時序）是用獨立的 Node.js 腳本，透過 npm 版 `firebase` SDK 直接打 emulator 測的，不依賴瀏覽器 pane，可以完整測到 CVD-safe 那種等級的正確性驗證；(2) DOM/UI 那端（登入畫面顯示切換、按鈕綁定、既有功能沒有因為改成 module 而壞掉）是把 `firebase-config.js` 暫時換成一個純本機假實作（no-op 版）測的，測完要記得換回真正的 `firebase-config.js`。目前沒辦法在這個瀏覽器 pane 裡做「真正串 emulator + 真的 Google 登入」的全端到端測試，這步只能請使用者在自己的真實瀏覽器上做。
 - **搬遷/同步邏輯的測試腳本**：位於系統暫存的 scratchpad（session 專屬、不在專案 repo 裡），如果之後要改 `diffAndPush`/`handleSignedIn`/`firestore.rules`，建議重新寫一版類似的 Node 測試腳本（連 emulator、建假帳號、驗證 diff 寫入筆數、驗證 rules 擋掉跨帳號存取、驗證搬遷時序不會讓 listener 看到過渡態的空集合），不要只靠肉眼看程式碼，這塊風險太高值得跑一次真的測試。
