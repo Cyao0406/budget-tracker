@@ -1,4 +1,4 @@
-var CACHE_NAME = 'budget-app-v3';
+var CACHE_NAME = 'budget-app-v4';
 var ASSETS = [
   './',
   './index.html',
@@ -27,18 +27,19 @@ self.addEventListener('activate', function (event) {
   self.clients.claim();
 });
 
+// Network-first：有網路時一定拿最新版本（開發中常常改東西，不想要使用者卡在舊快取），
+// 只有離線的時候才退回用快取，離線可用這件事還是保留。
 self.addEventListener('fetch', function (event) {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      var network = fetch(event.request).then(function (res) {
-        if (res && res.status === 200) {
-          var copy = res.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copy); });
-        }
-        return res;
-      }).catch(function () { return cached; });
-      return cached || network;
+    fetch(event.request).then(function (res) {
+      if (res && res.status === 200) {
+        var copy = res.clone();
+        caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copy); });
+      }
+      return res;
+    }).catch(function () {
+      return caches.match(event.request);
     })
   );
 });
