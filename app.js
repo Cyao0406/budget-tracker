@@ -1,3 +1,9 @@
+import {
+  auth, db, googleProvider,
+  signInWithPopup, signOut, onAuthStateChanged,
+  collection, doc, onSnapshot, writeBatch, getDocs
+} from './firebase-config.js';
+
 (function () {
   'use strict';
 
@@ -93,13 +99,135 @@
     localStorage.setItem(STORAGE.categories, JSON.stringify(cats));
     return cats;
   }
-  function saveCategories() { localStorage.setItem(STORAGE.categories, JSON.stringify(state.categories)); }
+  function saveCategories() { localStorage.setItem(STORAGE.categories, JSON.stringify(state.categories)); queueCloudSync('categories'); }
   function loadRecords() {
     var raw = localStorage.getItem(STORAGE.records);
     if (!raw) return [];
     try { return JSON.parse(raw); } catch (e) { return []; }
   }
-  function saveRecords() { localStorage.setItem(STORAGE.records, JSON.stringify(state.records)); }
+  function saveRecords() { localStorage.setItem(STORAGE.records, JSON.stringify(state.records)); queueCloudSync('records'); }
+
+  // ---------- cloud sync ----------
+  // 設計原則：localStorage 永遠是「畫面立刻看到」的來源，雲端只是背景同步層。
+  // 沒登入時完全不受影響，行為跟純單機版一模一樣。
+  var cloudUser = null;
+  var lastSynced = { records: null, categories: null }; // null = 尚未建立同步基準
+  var applyingRemoteChange = false;
+  var unsubscribers = [];
+
+  function cloudCollection(name) { return collection(db, 'users', cloudUser.uid, name); }
+
+  function diffAndPush(name, currentArr) {
+    if (!cloudUser) return Promise.resolve();
+    var lastArr = lastSynced[name];
+    var lastById = {};
+    (lastArr || []).forEach(function (x) { lastById[x.id] = x; });
+    var currentById = {};
+    currentArr.forEach(function (x) { currentById[x.id] = x; });
+    var batch = writeBatch(db);
+    var writes = 0;
+    currentArr.forEach(function (item) {
+      var prev = lastById[item.id];
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) {
+        batch.set(doc(cloudCollection(name), item.id), item);
+        writes++;
+      }
+    });
+    (lastArr || []).forEach(function (item) {
+      if (!currentById[item.id]) { batch.delete(doc(cloudCollection(name), item.id)); writes++; }
+    });
+    if (writes === 0) { lastSynced[name] = currentArr.map(function (x) { return Object.assign({}, x); }); return Promise.resolve(); }
+    return batch.commit().then(function () {
+      lastSynced[name] = currentArr.map(function (x) { return Object.assign({}, x); });
+    });
+  }
+  function queueCloudSync(name) {
+    if (!cloudUser || applyingRemoteChange) return;
+    var arr = name === 'records' ? state.records : state.categories;
+    diffAndPush(name, arr).catch(function (e) { console.error('cloud sync (' + name + ') failed', e); showToast('雲端同步失敗，稍後會自動重試'); });
+  }
+
+  // 注意：listener 一定要等「搬遷這件事已經有結論」之後才能開始掛，不然雲端第一次讀到的
+  // 空集合（還沒搬遷完成前，雲端本來就是空的）會被 onSnapshot 誤判成「使用者把資料全刪了」，
+  // 反過來把本機資料蓋成空的——這是最需要避免的資料遺失情境，順序不能反過來寫。
+  function startCloudListeners() {
+    ['records', 'categories'].forEach(function (name) {
+      var unsub = onSnapshot(cloudCollection(name), function (snap) {
+        if (snap.metadata.hasPendingWrites) return; // 忽略自己剛寫入、還在等伺服器確認的回音
+        var arr = [];
+        snap.forEach(function (d) { arr.push(d.data()); });
+        applyingRemoteChange = true;
+        if (name === 'records') state.records = arr; else state.categories = arr;
+        lastSynced[name] = arr.map(function (x) { return Object.assign({}, x); });
+        localStorage.setItem(name === 'records' ? STORAGE.records : STORAGE.categories, JSON.stringify(arr));
+        applyingRemoteChange = false;
+        renderAll();
+      }, function (err) { console.error(name + ' listener error', err); });
+      unsubscribers.push(unsub);
+    });
+  }
+  function stopCloudListeners() {
+    unsubscribers.forEach(function (fn) { fn(); });
+    unsubscribers = [];
+    lastSynced = { records: null, categories: null };
+  }
+
+  function renderAuthUi() {
+    if (!els.authSignedOut) return;
+    els.authSignedOut.classList.toggle('hidden', !!cloudUser);
+    els.authSignedIn.classList.toggle('hidden', !cloudUser);
+    if (cloudUser) els.authEmail.textContent = cloudUser.email || cloudUser.displayName || '（已登入）';
+  }
+
+  function handleSignedIn(user) {
+    cloudUser = user;
+    renderAuthUi();
+    Promise.all([getDocs(cloudCollection('records')), getDocs(cloudCollection('categories'))]).then(function (results) {
+      var cloudEmpty = results[0].empty && results[1].empty;
+      var localHasData = state.records.length > 0 || state.categories.length > 0;
+      if (!cloudEmpty || !localHasData) {
+        startCloudListeners();
+        return;
+      }
+      // 第一次搬遷：雲端這個帳號完全是空的、本機卻有資料，問過使用者才動作，
+      // 而且搬遷寫入要「等完成」才開始掛 listener，避免上面註解講的競速問題。
+      var ok = window.confirm(
+        '偵測到這台裝置有 ' + state.records.length + ' 筆本機紀錄，要上傳到雲端帳號嗎？\n\n' +
+        '建議先按「取消」，到設定裡用「匯出 CSV」備份一份再回來重新登入觸發這個提示。\n' +
+        '這個動作不會刪除本機資料，只是額外複製一份到雲端。'
+      );
+      if (!ok) {
+        showToast('已取消雲端同步');
+        signOut(auth);
+        return;
+      }
+      lastSynced.records = [];
+      lastSynced.categories = [];
+      Promise.all([diffAndPush('categories', state.categories), diffAndPush('records', state.records)]).then(function () {
+        showToast('已上傳到雲端');
+        startCloudListeners();
+      }).catch(function (e) {
+        console.error('migration push failed', e);
+        showToast('上傳雲端失敗，本機資料不受影響，可以到設定重新登入再試一次');
+        signOut(auth);
+      });
+    }).catch(function (e) {
+      console.error('cloud init failed', e);
+      showToast('連線雲端失敗，暫時以本機資料為準');
+    });
+  }
+
+  function initCloudSync() {
+    onAuthStateChanged(auth, function (user) {
+      if (user) {
+        handleSignedIn(user);
+      } else {
+        cloudUser = null;
+        renderAuthUi();
+        stopCloudListeners();
+      }
+    });
+  }
 
   function catsOfType(type) { return state.categories.filter(function (c) { return c.type === type; }); }
   function findCat(id) { return state.categories.find(function (c) { return c.id === id; }); }
@@ -181,7 +309,8 @@
       'addCategoryBtn', 'settingsExportBtn', 'importFileInput', 'resetDataBtn', 'toast',
       'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editCategory',
       'editAmount', 'editNote', 'editDeleteBtn', 'editSaveBtn',
-      'mergeCategorySheet', 'mergeCategoryBackdrop', 'mergeCategoryTitle', 'mergeCategoryGrid', 'mergeCategoryCancel'
+      'mergeCategorySheet', 'mergeCategoryBackdrop', 'mergeCategoryTitle', 'mergeCategoryGrid', 'mergeCategoryCancel',
+      'authSignedOut', 'authSignedIn', 'authEmail', 'googleSignInBtn', 'signOutBtn'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
   }
 
@@ -800,11 +929,26 @@
       reader.readAsText(file, 'UTF-8');
     });
     els.resetDataBtn.addEventListener('click', function () {
-      if (!window.confirm('確定要清除所有記帳資料嗎？此動作無法復原。')) return;
-      localStorage.removeItem(STORAGE.records);
-      localStorage.removeItem(STORAGE.categories);
-      location.reload();
+      var msg = cloudUser ? '確定要清除所有記帳資料嗎？這會同時清除雲端上的資料，此動作無法復原。' : '確定要清除所有記帳資料嗎？此動作無法復原。';
+      if (!window.confirm(msg)) return;
+      var afterClear = function () {
+        localStorage.removeItem(STORAGE.records);
+        localStorage.removeItem(STORAGE.categories);
+        location.reload();
+      };
+      if (cloudUser) {
+        Promise.all([diffAndPush('records', []), diffAndPush('categories', [])]).then(afterClear).catch(afterClear);
+      } else {
+        afterClear();
+      }
     });
+
+    els.googleSignInBtn.addEventListener('click', function () {
+      signInWithPopup(auth, googleProvider).catch(function (e) {
+        showToast('登入失敗：' + (e && e.message ? e.message : '未知錯誤'));
+      });
+    });
+    els.signOutBtn.addEventListener('click', function () { signOut(auth); });
 
     els.settingsBtn.addEventListener('click', function () {
       state.editingCategoryContext = state.addType;
@@ -846,6 +990,7 @@
     populateManualCategorySelect();
     bindEvents();
     renderAll();
+    initCloudSync();
 
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       navigator.serviceWorker.register('sw.js').catch(function () {});

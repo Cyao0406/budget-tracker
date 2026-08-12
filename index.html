@@ -229,6 +229,18 @@
       <button type="button" class="add-category-btn" id="addCategoryBtn">+ 新增分類</button>
 
       <hr class="divider">
+      <div class="cloud-sync-section">
+        <p class="kw-label">雲端同步</p>
+        <div id="authSignedOut">
+          <button type="button" class="text-btn" id="googleSignInBtn">使用 Google 登入以啟用雲端同步</button>
+        </div>
+        <div id="authSignedIn" class="hidden">
+          <p class="hint" id="authStatusHint">已登入：<span id="authEmail"></span> ・ 資料會自動同步到其他登入同一帳號的裝置</p>
+          <button type="button" class="text-btn danger" id="signOutBtn">登出</button>
+        </div>
+      </div>
+
+      <hr class="divider">
       <div class="data-actions">
         <button type="button" class="text-btn" id="settingsExportBtn">匯出 CSV 備份</button>
         <label class="text-btn file-import-btn">
@@ -237,7 +249,7 @@
         </label>
         <button type="button" class="text-btn danger" id="resetDataBtn">清除所有資料</button>
       </div>
-      <p class="hint">資料儲存在此瀏覽器裝置上（localStorage），清除瀏覽器資料會遺失紀錄，建議定期匯出 CSV 備份。匯入同時支援本 App 匯出的格式，以及 MoneyNote App 匯出的 CSV。</p>
+      <p class="hint">資料預設只存在此瀏覽器裝置上（localStorage），不登入也能正常使用。登入雲端同步後，資料會額外備份到雲端並同步到其他登入同帳號的裝置；清除瀏覽器資料前仍建議定期匯出 CSV 備份。匯入同時支援本 App 匯出的格式，以及 MoneyNote App 匯出的 CSV。</p>
     </div>
   </div>
 
@@ -245,6 +257,6 @@
 
 </div>
 
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>

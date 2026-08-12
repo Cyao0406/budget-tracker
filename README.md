@@ -4,11 +4,13 @@
 
 ## 技術
 
-純前端 HTML / CSS / JS（無框架、無建置流程），資料存在瀏覽器 `localStorage`（單機，不跨裝置同步）。
+前端 HTML / CSS / JS（無建置流程），資料預設存在瀏覽器 `localStorage`（不登入也能正常使用）。登入 Google 帳號後會額外背景同步到 Firebase（Firestore），多裝置登入同帳號會自動同步。
 
-- `index.html` — 頁面結構
+- `index.html` — 頁面結構（含登入畫面）
 - `style.css` — 樣式（淺色/深色皆支援）
-- `app.js` — 所有邏輯（資料模型、自動分類、圖表、CRUD）
+- `app.js` — 所有邏輯（資料模型、自動分類、圖表、CRUD、雲端同步）
+- `firebase-config.js` — Firebase 初始化（本機自動接 emulator，正式站需自行填入專案 config）
+- `firestore.rules` / `firebase.json` — 雲端安全規則與 emulator 設定
 - `manifest.json` / `sw.js` / `icons/` — PWA 設定與離線快取
 
 ## 本機測試
@@ -27,11 +29,12 @@ python -m http.server 8791
 - 日/週/月報表（圓餅圖 + 圖例）
 - 點紀錄可編輯，或刪除
 - CSV 匯出/匯入（備份、跨裝置搬家）
+- 設定裡可選擇用 Google 帳號登入，啟用雲端同步（選用功能，不影響單機使用）
 
 ## 已知限制
 
-資料只存在單一瀏覽器裝置上，清除瀏覽器資料會遺失紀錄，建議定期用「設定」裡的「匯出 CSV 備份」。若要多裝置同步需改接雲端資料庫（目前刻意不做，維持單機簡單版）。
+資料預設只存在單一瀏覽器裝置上，清除瀏覽器資料會遺失紀錄，建議定期用「設定」裡的「匯出 CSV 備份」，即使已經登入雲端同步也一樣。
 
 ## 未來規劃
 
-雲端同步版的完整規劃、以及其他建議加強的功能，列在 [ROADMAP.md](ROADMAP.md)。
+其他建議加強的功能列在 [ROADMAP.md](ROADMAP.md)。

@@ -421,6 +421,8 @@ body {
 
 .divider { border: none; border-top: 1px solid var(--gridline); margin: 16px 0; }
 .data-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.cloud-sync-section .kw-label { margin: 0 0 8px; }
+.cloud-sync-section #authStatusHint { margin: 0 0 8px; }
 .file-import-btn { cursor: pointer; }
 
 .toast {
