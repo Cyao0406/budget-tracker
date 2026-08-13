@@ -486,6 +486,7 @@ import {
       'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editTime', 'editCategory',
       'editAmount', 'editNote', 'editDeleteBtn', 'editSaveBtn',
       'mergeCategorySheet', 'mergeCategoryBackdrop', 'mergeCategoryTitle', 'mergeCategoryGrid', 'mergeCategoryCancel',
+      'mergeCategoryNoMergeBtn',
       'authSignedOut', 'authSignedIn', 'authEmail', 'googleSignInBtn', 'signOutBtn',
       'currentVersionTag', 'changelogBtn', 'changelogSheet', 'changelogBackdrop', 'changelogCloseBtn', 'changelogList',
       'bottomTabs', 'tabInput', 'tabCalendar', 'tabReport',
@@ -894,6 +895,20 @@ import {
   function closeEditRecord() { els.editRecordSheet.classList.add('hidden'); state.editingRecordId = null; }
 
   // ---------- settings: category management ----------
+  // 刪除分類的共用邏輯：target 有給就把紀錄轉過去（順便處理收容分類遞補），
+  // target 是 null 代表這個分類底下本來就沒有任何紀錄，直接刪除即可。
+  function performCategoryDelete(c, target) {
+    if (target) {
+      if (c.fallback) target.fallback = true;
+      state.records.forEach(function (r) { if (r.categoryId === c.id) r.categoryId = target.id; });
+      saveRecords();
+    }
+    state.categories = state.categories.filter(function (x) { return x.id !== c.id; });
+    saveCategories();
+    els.mergeCategorySheet.classList.add('hidden');
+    renderCategoryEditList();
+    renderAll();
+  }
   function openMergeCategorySheet(c, siblings) {
     els.mergeCategoryTitle.textContent = '刪除「' + c.name + '」— 紀錄要轉移到哪個分類？';
     els.mergeCategoryGrid.innerHTML = '';
@@ -904,17 +919,34 @@ import {
       btn.addEventListener('click', function () { mergeDeleteCategory(c, s); });
       els.mergeCategoryGrid.appendChild(btn);
     });
+
+    // 不想被迫挑一個轉移目標時（常見情境：手滑多新增了一個空分類）可以直接用這個按鈕跳過選擇。
+    // 如果底下真的還有紀錄，不能讓它們憑空變成指不到任何分類，所以自動歸到收容分類，
+    // 但文案講清楚會歸去哪裡，不是完全沒交代就消失。
+    var recordCount = state.records.filter(function (r) { return r.categoryId === c.id; }).length;
+    if (recordCount === 0) {
+      els.mergeCategoryNoMergeBtn.textContent = '不指定分類，直接刪除';
+    } else {
+      var autoTarget = c.fallback ? siblings[0] : fallbackCat(c.type);
+      els.mergeCategoryNoMergeBtn.textContent = '不指定分類（' + recordCount + ' 筆紀錄自動歸到「' + catDisplayName(autoTarget) + '」）';
+    }
+    els.mergeCategoryNoMergeBtn.onclick = function () { deleteCategoryNoMerge(c, siblings, recordCount); };
+
     els.mergeCategorySheet.classList.remove('hidden');
   }
   function mergeDeleteCategory(c, target) {
     if (!window.confirm('刪除「' + c.name + '」，紀錄轉移到「' + target.name + '」？')) return;
-    if (c.fallback) target.fallback = true;
-    state.records.forEach(function (r) { if (r.categoryId === c.id) r.categoryId = target.id; });
-    state.categories = state.categories.filter(function (x) { return x.id !== c.id; });
-    saveCategories(); saveRecords();
-    els.mergeCategorySheet.classList.add('hidden');
-    renderCategoryEditList();
-    renderAll();
+    performCategoryDelete(c, target);
+  }
+  function deleteCategoryNoMerge(c, siblings, recordCount) {
+    if (recordCount === 0) {
+      performCategoryDelete(c, null);
+      showToast('已刪除「' + c.name + '」');
+      return;
+    }
+    var autoTarget = c.fallback ? siblings[0] : fallbackCat(c.type);
+    if (!window.confirm('刪除「' + c.name + '」，底下 ' + recordCount + ' 筆紀錄會自動歸到「' + autoTarget.name + '」，確定嗎？')) return;
+    performCategoryDelete(c, autoTarget);
   }
   function swatchGroupHtml(slots, selectedColorVar) {
     return slots.map(function (v) {
