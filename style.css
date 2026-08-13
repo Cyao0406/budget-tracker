@@ -150,6 +150,7 @@ body {
 
 .content { padding: 0 16px; display: flex; flex-direction: column; gap: 14px; }
 .tab-page { display: flex; flex-direction: column; gap: 14px; }
+#reportMainView { display: flex; flex-direction: column; gap: 14px; }
 
 /* ---------- Bottom tab bar ---------- */
 .bottom-tabs {
@@ -265,8 +266,6 @@ body {
   padding: 16px;
 }
 
-.period-range { margin: 0 0 10px; font-size: 12px; color: var(--text-muted); font-weight: 600; }
-
 /* ---------- Stat row ---------- */
 .stat-row { display: flex; gap: 8px; margin-bottom: 14px; }
 .stat-tile {
@@ -333,13 +332,29 @@ body {
 /* ---------- Big month calendar (日曆 tab) ---------- */
 .calendar-month-nav {
   display: flex; align-items: center; justify-content: space-between;
-  font-weight: 700; font-size: 16px; padding: 4px 2px;
+  font-weight: 700; font-size: 15px; padding: 4px 2px;
+}
+.calendar-month-nav span {
+  flex: 1; text-align: center; background: var(--card); border-radius: var(--radius-full);
+  padding: 8px 6px; margin: 0 6px; box-shadow: var(--shadow-card);
 }
 .calendar-month-nav button {
-  width: 34px; height: 34px; border: none; background: transparent;
+  width: 34px; height: 34px; flex-shrink: 0; border: none; background: transparent;
   color: var(--text-primary); font-size: 20px; cursor: pointer; border-radius: var(--radius-full);
 }
 .calendar-month-nav button:active { background: var(--gridline); }
+
+.calendar-weekdays-full { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 4px; }
+.calendar-weekdays-full span {
+  text-align: center; font-size: 12px; font-weight: 700; color: var(--text-secondary); padding: 4px 0;
+}
+.calendar-weekdays-full span.sun { color: var(--expense-color); }
+.calendar-weekdays-full span.sat { color: var(--series-1); }
+
+.calendar-summary-row { display: flex; padding: 4px 6px; }
+.calendar-summary-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.calendar-summary-item .stat-label { font-size: 12px; color: var(--text-muted); }
+.calendar-summary-item .stat-value { font-size: 15px; }
 
 .calendar-grid-card { padding: 10px; }
 .calendar-grid-big { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
@@ -406,6 +421,7 @@ body {
   height: 40px; padding: 0 12px; border-radius: var(--radius-md); border: 1px solid var(--border);
   background: var(--page); color: var(--text-primary); font-size: 14px;
 }
+.manual-category-grid { max-height: 220px; overflow-y: auto; }
 
 /* ---------- Records ---------- */
 .records-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }

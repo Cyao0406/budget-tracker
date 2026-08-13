@@ -84,10 +84,10 @@
           <button type="button" class="advanced-toggle" id="advancedToggle">進階選項 ▾</button>
 
           <div class="advanced-fields hidden" id="advancedFields">
-            <label class="field">
+            <div class="field">
               <span>分類</span>
-              <select id="manualCategory"></select>
-            </label>
+              <div class="category-grid manual-category-grid" id="manualCategoryGrid"></div>
+            </div>
             <label class="field">
               <span>金額</span>
               <input type="number" id="manualAmount" inputmode="decimal" min="0" step="1" placeholder="0">
@@ -120,22 +120,22 @@
       </section>
 
       <section class="card calendar-grid-card">
-        <div class="calendar-weekdays">
-          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+        <div class="calendar-weekdays-full">
+          <span class="sun">星期日</span><span>星期一</span><span>星期二</span><span>星期三</span><span>星期四</span><span>星期五</span><span class="sat">星期六</span>
         </div>
         <div class="calendar-grid-big" id="calendarGridBig"></div>
       </section>
 
-      <div class="stat-row">
-        <div class="stat-tile">
+      <div class="calendar-summary-row">
+        <div class="calendar-summary-item">
           <span class="stat-label">收入</span>
           <span class="stat-value income" id="calStatIncome">$0</span>
         </div>
-        <div class="stat-tile">
+        <div class="calendar-summary-item">
           <span class="stat-label">支出</span>
           <span class="stat-value expense" id="calStatExpense">$0</span>
         </div>
-        <div class="stat-tile">
+        <div class="calendar-summary-item">
           <span class="stat-label">合計</span>
           <span class="stat-value" id="calStatTotal">$0</span>
         </div>
@@ -162,15 +162,19 @@
     <div class="tab-page hidden" id="tabReport">
       <div id="reportMainView">
         <!-- Period tabs -->
-        <nav class="period-tabs" id="periodTabs" role="tablist" aria-label="統計週期">
-          <button type="button" class="period-tab active" data-period="day" role="tab" aria-selected="true">日</button>
-          <button type="button" class="period-tab" data-period="week" role="tab" aria-selected="false">週</button>
-          <button type="button" class="period-tab" data-period="month" role="tab" aria-selected="false">月</button>
+        <nav class="period-tabs" id="periodTabs" role="tablist" aria-label="報表週期">
+          <button type="button" class="period-tab active" data-period="month" role="tab" aria-selected="true">月度報告</button>
+          <button type="button" class="period-tab" data-period="year" role="tab" aria-selected="false">年度報告</button>
         </nav>
+
+        <section class="calendar-month-nav">
+          <button type="button" id="reportPrevBtn" aria-label="上一期">‹</button>
+          <span id="periodRangeLabel"></span>
+          <button type="button" id="reportNextBtn" aria-label="下一期">›</button>
+        </section>
 
         <!-- Summary card -->
         <section class="card summary-card">
-          <p class="period-range" id="periodRangeLabel"></p>
           <div class="stat-row">
             <div class="stat-tile">
               <span class="stat-label">支出</span>

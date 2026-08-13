@@ -113,6 +113,9 @@ import {
   function endOfWeek(d) { return addDays(startOfWeek(d), 6); }
   function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
   function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
+  function startOfYear(d) { return new Date(d.getFullYear(), 0, 1); }
+  function endOfYear(d) { return new Date(d.getFullYear(), 11, 31); }
+  function addYears(d, n) { var r = new Date(d); r.setFullYear(r.getFullYear() + n); return r; }
   function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
   function formatMoney(n) {
     var sign = n < 0 ? '-' : '';
@@ -130,7 +133,8 @@ import {
     records: [],
     categories: [],
     selectedDate: new Date(),
-    period: 'day',
+    period: 'month',
+    reportDate: new Date(),
     addType: 'expense',
     chartType: 'expense',
     tempCategoryOverride: null,
@@ -151,6 +155,10 @@ import {
   };
 
   // ---------- storage ----------
+  // 這台裝置這次開機，分類是不是剛用預設清單冷啟動生成的（localStorage 原本是空的）——
+  // 例如無痕視窗、清過瀏覽器資料、全新裝置。handleSignedIn 登入時如果偵測到這個是 true，
+  // 就不會把這批預設分類當成「本機異動」推上雲端，避免跟雲端帳號原有的分類疊出重複。
+  var categoriesFreshlySeeded = false;
   function loadCategories() {
     var raw = localStorage.getItem(STORAGE.categories);
     var cats = null;
@@ -158,6 +166,7 @@ import {
       try { cats = JSON.parse(raw); } catch (e) { cats = null; }
     }
     if (!cats) {
+      categoriesFreshlySeeded = true;
       cats = [];
       DEFAULT_EXPENSE_CATS.forEach(function (c) { cats.push(Object.assign({ id: uid(), type: 'expense' }, c)); });
       DEFAULT_INCOME_CATS.forEach(function (c) { cats.push(Object.assign({ id: uid(), type: 'income' }, c)); });
@@ -298,6 +307,16 @@ import {
         return;
       }
 
+      // 更直接的一道防線：如果這次開機的分類是冷啟動生成的預設值（無痕視窗、清過瀏覽器
+      // 資料、全新裝置都會這樣），而這個雲端帳號本來就已經有自己的分類，代表這批預設分類
+      // 只是這台裝置暫時性的初始值，不是使用者真的在這台裝置上做的自訂——直接採用雲端既有
+      // 的分類，完全不要把預設值推上去，才不會疊出「App 預設 + 雲端原本」的重複。
+      var skipCategoryPush = categoriesFreshlySeeded && cloudCategories.length > 0;
+      if (skipCategoryPush) {
+        state.categories = cloudCategories.map(function (c) { return Object.assign({}, c); });
+        localStorage.setItem(STORAGE.categories, JSON.stringify(state.categories));
+      }
+
       // 分類重複的根本成因：如果本機這時候的分類清單（不管什麼原因）跟雲端已有的分類
       // 「同名同類型但 id 不一樣」——例如本機剛好在 loadCategories() 用預設清單重新生成過
       // 一次——下面的 pushLocalOnly 只用 id 比對，找不到對應的舊 id 就會當成全新分類寫進
@@ -347,10 +366,9 @@ import {
         });
         return writes === 0 ? Promise.resolve() : batch.commit();
       };
-      Promise.all([
-        pushLocalOnly('categories', state.categories, cloudCategories),
-        pushLocalOnly('records', state.records, cloudRecords)
-      ]).then(startCloudListeners).catch(function (e) {
+      var loginPushes = [pushLocalOnly('records', state.records, cloudRecords)];
+      if (!skipCategoryPush) loginPushes.push(pushLocalOnly('categories', state.categories, cloudCategories));
+      Promise.all(loginPushes).then(startCloudListeners).catch(function (e) {
         console.error('login sync reconcile failed', e);
         startCloudListeners();
       });
@@ -426,10 +444,11 @@ import {
   }
 
   // ---------- range ----------
+  // 報表頁自己的期間導覽（reportDate）跟輸入分頁的日期列（selectedDate）故意分開，
+  // 瀏覽報表的月份/年度不會動到輸入分頁正在記帳的那一天。
   function getRange() {
-    var d = state.selectedDate;
-    if (state.period === 'day') return [d, d];
-    if (state.period === 'week') return [startOfWeek(d), endOfWeek(d)];
+    var d = state.reportDate;
+    if (state.period === 'year') return [startOfYear(d), endOfYear(d)];
     return [startOfMonth(d), endOfMonth(d)];
   }
   function sortRecs(recs) {
@@ -465,10 +484,10 @@ import {
     return sortRecs(recs);
   }
   function periodLabelText() {
-    var d = state.selectedDate;
-    if (state.period === 'day') return isSameDay(d, new Date()) ? '今天 ' + shortDate(d) : shortDate(d) + ' (' + WEEKDAY[d.getDay()] + ')';
-    if (state.period === 'week') { var r = getRange(); return shortDate(r[0]) + ' - ' + shortDate(r[1]); }
-    return d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+    var d = state.reportDate;
+    if (state.period === 'year') return d.getFullYear() + '年';
+    var mEnd = endOfMonth(d).getDate();
+    return d.getFullYear() + '年' + (d.getMonth() + 1) + '月 (' + (d.getMonth() + 1) + '月1日 - ' + (d.getMonth() + 1) + '月' + mEnd + '日)';
   }
 
   // ---------- DOM refs ----------
@@ -476,9 +495,9 @@ import {
   function cacheEls() {
     ['themeToggleBtn', 'settingsBtn', 'datePrevBtn', 'dateDisplayBtn', 'dateDisplayText', 'dateNextBtn', 'todayBtn',
       'calendarPopup', 'calPrevMonth', 'calNextMonth', 'calMonthLabel', 'calendarGrid', 'periodTabs',
-      'periodRangeLabel', 'statExpense', 'statIncome', 'statBalance', 'pieChart', 'chartEmpty', 'chartTooltip', 'chartLegend',
+      'periodRangeLabel', 'reportPrevBtn', 'reportNextBtn', 'statExpense', 'statIncome', 'statBalance', 'pieChart', 'chartEmpty', 'chartTooltip', 'chartLegend',
       'quickAddForm', 'quickInput', 'addBtn', 'parsePreview', 'parseAmount', 'parseNote', 'parseCategoryChip',
-      'advancedToggle', 'advancedFields', 'manualCategory', 'manualAmount', 'manualNote',
+      'advancedToggle', 'advancedFields', 'manualCategoryGrid', 'manualAmount', 'manualNote',
       'categoryPickSheet', 'categoryPickBackdrop', 'categoryPickGrid', 'categoryPickClose',
       'recordsList', 'recordsSearchInput',
       'exportBtn', 'settingsSheet', 'settingsBackdrop', 'settingsCloseBtn', 'categoryEditList',
@@ -756,7 +775,8 @@ import {
   }
   function renderCalendarTab() {
     var month = state.calendarTabMonth;
-    els.calBigMonthLabel.textContent = month.getFullYear() + '年' + (month.getMonth() + 1) + '月';
+    var mEnd = endOfMonth(month).getDate();
+    els.calBigMonthLabel.textContent = month.getFullYear() + '年' + (month.getMonth() + 1) + '月 (' + (month.getMonth() + 1) + '月1日 - ' + (month.getMonth() + 1) + '月' + mEnd + '日)';
 
     var dayTotals = {};
     var monthKey = month.getFullYear() + '-' + pad2(month.getMonth() + 1);
@@ -824,7 +844,7 @@ import {
     if (!val.trim()) {
       els.parsePreview.classList.add('hidden');
       if (!state.manualCategoryTouched) state.tempCategoryOverride = null;
-      syncManualCategorySelect();
+      syncManualCategoryGrid();
       return;
     }
     els.parsePreview.classList.remove('hidden');
@@ -833,16 +853,38 @@ import {
     var cat = effectiveCategory();
     els.parseCategoryChip.textContent = catDisplayName(cat);
     els.parseCategoryChip.style.background = 'var(' + cat.colorVar + ')';
-    syncManualCategorySelect();
+    syncManualCategoryGrid();
   }
-  function syncManualCategorySelect() {
-    var cat = effectiveCategory();
-    if (els.manualCategory.value !== cat.id) els.manualCategory.value = cat.id;
+  // 進階選項的分類改成跟參考截圖一樣直接點格子選，不用另外開下拉選單/彈窗。
+  // renderManualCategoryGrid 整個重繪（分類類型換了、清單本身變動時用）；
+  // syncManualCategoryGrid 只更新選中的樣式（每次打字自動猜分類時用，不用整個重建 DOM）。
+  function renderCategoryGridInto(container, cats, currentId, onSelect) {
+    container.innerHTML = '';
+    cats.forEach(function (c) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.catId = c.id;
+      if (c.id === currentId) btn.classList.add('selected');
+      btn.innerHTML = '<span class="dot" style="background:var(' + c.colorVar + ')"></span><span>' + escapeHtml(catDisplayName(c)) + '</span>';
+      btn.addEventListener('click', function () { onSelect(c); });
+      container.appendChild(btn);
+    });
   }
-  function populateManualCategorySelect() {
+  function renderManualCategoryGrid() {
     var cats = catsOfType(state.addType);
-    els.manualCategory.innerHTML = cats.map(function (c) { return '<option value="' + c.id + '">' + escapeHtml(catDisplayName(c)) + '</option>'; }).join('');
-    syncManualCategorySelect();
+    var current = effectiveCategory();
+    renderCategoryGridInto(els.manualCategoryGrid, cats, current.id, function (c) {
+      state.tempCategoryOverride = c.id;
+      state.manualCategoryTouched = true;
+      updateQuickPreview();
+      renderManualCategoryGrid();
+    });
+  }
+  function syncManualCategoryGrid() {
+    var current = effectiveCategory();
+    Array.prototype.forEach.call(els.manualCategoryGrid.querySelectorAll('button'), function (btn) {
+      btn.classList.toggle('selected', btn.dataset.catId === current.id);
+    });
   }
 
   // ---------- category pick sheet ----------
@@ -850,19 +892,11 @@ import {
     state.categoryPickContext = context;
     var cats = catsOfType(state.addType);
     var current = effectiveCategory();
-    els.categoryPickGrid.innerHTML = '';
-    cats.forEach(function (c) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      if (c.id === current.id) btn.classList.add('selected');
-      btn.innerHTML = '<span class="dot" style="background:var(' + c.colorVar + ')"></span><span>' + escapeHtml(catDisplayName(c)) + '</span>';
-      btn.addEventListener('click', function () {
-        state.tempCategoryOverride = c.id;
-        state.manualCategoryTouched = true;
-        els.categoryPickSheet.classList.add('hidden');
-        updateQuickPreview();
-      });
-      els.categoryPickGrid.appendChild(btn);
+    renderCategoryGridInto(els.categoryPickGrid, cats, current.id, function (c) {
+      state.tempCategoryOverride = c.id;
+      state.manualCategoryTouched = true;
+      els.categoryPickSheet.classList.add('hidden');
+      updateQuickPreview();
     });
     els.categoryPickSheet.classList.remove('hidden');
   }
@@ -1338,7 +1372,7 @@ import {
   // ---------- master render ----------
   function renderAll() {
     renderDateBar();
-    populateManualCategorySelect();
+    renderManualCategoryGrid();
     updateQuickPreview();
     renderCalendarTab();
     renderReportTab();
@@ -1382,6 +1416,14 @@ import {
         });
         renderAll();
       });
+    });
+    els.reportPrevBtn.addEventListener('click', function () {
+      state.reportDate = state.period === 'year' ? addYears(state.reportDate, -1) : addMonths(state.reportDate, -1);
+      renderAll();
+    });
+    els.reportNextBtn.addEventListener('click', function () {
+      state.reportDate = state.period === 'year' ? addYears(state.reportDate, 1) : addMonths(state.reportDate, 1);
+      renderAll();
     });
 
     Array.prototype.forEach.call(document.querySelectorAll('.chart-toggle-btn'), function (btn) {
@@ -1431,7 +1473,7 @@ import {
           b.classList.toggle('active', b === btn);
           b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
         });
-        populateManualCategorySelect();
+        renderManualCategoryGrid();
         updateQuickPreview();
       });
     });
@@ -1442,11 +1484,6 @@ import {
       updateQuickPreview();
     });
     els.parseCategoryChip.addEventListener('click', function () { openCategoryPick('quickadd'); });
-    els.manualCategory.addEventListener('change', function () {
-      state.tempCategoryOverride = els.manualCategory.value;
-      state.manualCategoryTouched = true;
-      updateQuickPreview();
-    });
     els.advancedToggle.addEventListener('click', function () {
       els.advancedFields.classList.toggle('hidden');
       els.advancedToggle.textContent = els.advancedFields.classList.contains('hidden') ? '進階選項 ▾' : '進階選項 ▴';
@@ -1467,7 +1504,7 @@ import {
       var r = state.records.find(function (x) { return x.id === state.editingRecordId; });
       if (!r) return;
       var amount = parseFloat(els.editAmount.value);
-      if (!amount || amount <= 0) { showToast('請輸入有效金額'); els.editAmount.focus(); return; }
+      if (isNaN(amount) || amount < 0) { showToast('請輸入有效金額'); els.editAmount.focus(); return; }
       var dateVal = els.editDate.value;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) { showToast('請選擇日期'); return; }
       var timeVal = els.editTime.value || '00:00';
@@ -1497,9 +1534,9 @@ import {
       var amount = parsed.amount;
       var note = parsed.note;
       var manualAmt = parseFloat(els.manualAmount.value);
-      if (!isNaN(manualAmt) && manualAmt > 0) amount = manualAmt;
+      if (!isNaN(manualAmt) && manualAmt >= 0) amount = manualAmt;
       if (els.manualNote.value.trim()) note = els.manualNote.value.trim();
-      if (!amount || amount <= 0) { showToast('請輸入有效金額'); els.quickInput.focus(); return; }
+      if (amount === null || isNaN(amount) || amount < 0) { showToast('請輸入有效金額'); els.quickInput.focus(); return; }
       var cat = effectiveCategory();
       state.records.push({ id: uid(), date: toKey(state.selectedDate), type: state.addType, categoryId: cat.id, amount: amount, note: note, createdAt: Date.now() });
       saveRecords();
@@ -1623,7 +1660,7 @@ import {
     if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
     state.categories = loadCategories();
     state.records = loadRecords();
-    populateManualCategorySelect();
+    renderManualCategoryGrid();
     bindEvents();
     switchTab('input');
     renderAll();
