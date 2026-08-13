@@ -10,8 +10,14 @@ import {
   var SVG_NS = 'http://www.w3.org/2000/svg';
   // 給家人/自己看的白話版更新紀錄，完整技術細節在 CLAUDE.md。新增版本時陣列開頭插入一筆，
   // CURRENT_VERSION 記得跟著更新（設定頁的版本號、標籤都是抓這個常數）。
-  var CURRENT_VERSION = 'v2.3';
+  var CURRENT_VERSION = 'v2.4';
   var CHANGELOG = [
+    { version: 'v2.4', name: '修正與微調', date: '2026-08-12', notes: [
+      '修正登入雲端同步後，分類 emoji 圖示會消失的問題',
+      '新增「訂閱費」分類，跟娛樂費分開（Netflix、Spotify、Claude、Cursor、健身房會費等訂閱制支出）',
+      '刪除紀錄新增輕微震動回饋（iOS Safari 不支援震動，其他平台會有感覺）',
+      '搜尋紀錄時，不論目前選的是日/週/月分頁都會顯示每筆紀錄的日期，日期文字也調大、調亮方便閱讀'
+    ] },
     { version: 'v2.3', name: '五項小功能更新', date: '2026-08-12', notes: [
       '紀錄列表顯示記帳時間，編輯紀錄時可以手動調整（例如隔天才補記，可以改回實際發生的時間）',
       '分類可以加一個 emoji 圖示（設定裡分類名稱旁邊），列表項目更好辨認',
