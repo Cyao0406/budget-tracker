@@ -16,6 +16,14 @@
 </head>
 <body>
 
+<!-- 開場載入畫面：等 app.js 確認 service worker 已經是最新版本才收起 -->
+<div class="app-loading" id="appLoading">
+  <div class="app-loading-inner">
+    <div class="app-loading-spinner"></div>
+    <p>簡單記帳</p>
+  </div>
+</div>
+
 <div class="app" id="app">
 
   <!-- Header -->
@@ -149,6 +157,18 @@
         </div>
         <div class="records-search">
           <input type="search" id="recordsSearchInput" placeholder="搜尋分類、備註或金額" aria-label="搜尋紀錄">
+          <button type="button" class="search-adv-toggle" id="searchAdvToggle" aria-label="進階篩選">篩選 ▾</button>
+        </div>
+        <div class="search-adv-panel hidden" id="searchAdvPanel">
+          <div class="search-adv-row">
+            <label class="field"><span>金額最小</span><input type="number" id="searchAmountMin" inputmode="decimal" min="0" placeholder="不限"></label>
+            <label class="field"><span>金額最大</span><input type="number" id="searchAmountMax" inputmode="decimal" min="0" placeholder="不限"></label>
+          </div>
+          <div class="search-adv-row">
+            <label class="field"><span>起始日期</span><input type="date" id="searchDateFrom"></label>
+            <label class="field"><span>結束日期</span><input type="date" id="searchDateTo"></label>
+          </div>
+          <button type="button" class="text-btn" id="searchAdvClearBtn">清除篩選條件</button>
         </div>
         <button type="button" class="chart-filter-clear-btn hidden" id="calendarDayClearBtn"></button>
         <p class="hint">點一下紀錄可以編輯；點日曆上的某一天只看那天，搜尋時會找全部紀錄（不限目前月份）</p>
@@ -218,6 +238,7 @@
         </section>
         <section class="card records-card">
           <h2>這個分類的紀錄</h2>
+          <button type="button" class="chart-filter-clear-btn hidden" id="drilldownMonthClearBtn">✕ 清除月份篩選</button>
           <div id="drilldownRecordsList" class="records-list"></div>
         </section>
       </div>

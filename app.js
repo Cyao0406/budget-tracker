@@ -156,10 +156,12 @@ import {
     editingRecordId: null,
     editRecordType: 'expense',
     searchQuery: '',
+    searchFilters: { amountMin: null, amountMax: null, dateFrom: null, dateTo: null },
     activeTab: 'input',
     calendarTabMonth: new Date(),
     calendarSelectedDay: null,
     categoryDrilldown: null,
+    drilldownMonthFilter: null,
     chartTooltipCategoryId: null,
     reclassifyType: 'expense',
     reclassifyPreview: []
@@ -471,18 +473,30 @@ import {
     var startKey = toKey(range[0]), endKey = toKey(range[1]);
     return sortRecs(state.records.filter(function (r) { return r.date >= startKey && r.date <= endKey; }));
   }
-  // 日曆頁用：有搜尋字串時故意不限制日期範圍（搜尋的目的就是「不記得是哪一天記的，用關鍵字
-  // 找」，限制在目前瀏覽的月份反而失去搜尋的意義）；沒搜尋時依目前瀏覽的月份，再看有沒有
-  // 額外點選單一天要進一步縮小範圍。
+  // 日曆頁用：有搜尋字串或進階篩選條件時故意不限制日期範圍（搜尋的目的就是「不記得是哪一天
+  // 記的，用條件找」，限制在目前瀏覽的月份反而失去搜尋的意義）；沒有任何條件時依目前瀏覽的
+  // 月份，再看有沒有額外點選單一天要進一步縮小範圍。
+  function hasActiveSearchFilters() {
+    var f = state.searchFilters;
+    return !!(state.searchQuery.trim() || f.amountMin != null || f.amountMax != null || f.dateFrom || f.dateTo);
+  }
   function calendarFilteredRecords() {
     var q = state.searchQuery.trim().toLowerCase();
+    var f = state.searchFilters;
     var recs;
-    if (q) {
+    if (hasActiveSearchFilters()) {
       recs = state.records.filter(function (r) {
-        var cat = findCat(r.categoryId);
-        var catName = cat ? cat.name.toLowerCase() : '';
-        var note = (r.note || '').toLowerCase();
-        return note.indexOf(q) !== -1 || catName.indexOf(q) !== -1 || String(r.amount).indexOf(q) !== -1;
+        if (q) {
+          var cat = findCat(r.categoryId);
+          var catName = cat ? cat.name.toLowerCase() : '';
+          var note = (r.note || '').toLowerCase();
+          if (note.indexOf(q) === -1 && catName.indexOf(q) === -1 && String(r.amount).indexOf(q) === -1) return false;
+        }
+        if (f.amountMin != null && r.amount < f.amountMin) return false;
+        if (f.amountMax != null && r.amount > f.amountMax) return false;
+        if (f.dateFrom && r.date < f.dateFrom) return false;
+        if (f.dateTo && r.date > f.dateTo) return false;
+        return true;
       });
     } else {
       var monthStartKey = toKey(startOfMonth(state.calendarTabMonth));
@@ -511,6 +525,7 @@ import {
       'advancedToggle', 'advancedFields', 'manualCategoryGrid', 'manualAmount', 'manualNote',
       'categoryPickSheet', 'categoryPickBackdrop', 'categoryPickGrid', 'categoryPickClose',
       'recordsList', 'recordsSearchInput',
+      'searchAdvToggle', 'searchAdvPanel', 'searchAmountMin', 'searchAmountMax', 'searchDateFrom', 'searchDateTo', 'searchAdvClearBtn',
       'exportBtn', 'settingsSheet', 'settingsBackdrop', 'settingsCloseBtn', 'categoryEditList',
       'addCategoryBtn', 'settingsExportBtn', 'importFileInput', 'resetDataBtn', 'toast', 'toastMsg', 'toastUndoBtn',
       'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editTime', 'editCategory',
@@ -522,7 +537,7 @@ import {
       'bottomTabs', 'tabInput', 'tabCalendar', 'tabReport',
       'calBigPrevMonth', 'calBigNextMonth', 'calBigMonthLabel', 'calendarGridBig',
       'calStatIncome', 'calStatExpense', 'calStatTotal', 'calendarRecordsHead', 'calendarDayClearBtn',
-      'reportMainView', 'categoryDrilldownView', 'drilldownBackBtn', 'drilldownTitle', 'trendChart', 'drilldownRecordsList',
+      'reportMainView', 'categoryDrilldownView', 'drilldownBackBtn', 'drilldownTitle', 'trendChart', 'drilldownRecordsList', 'drilldownMonthClearBtn',
       'reclassifyBtn', 'reclassifySheet', 'reclassifyBackdrop', 'reclassifyCloseBtn', 'reclassifyTypeToggle',
       'reclassifySourceSelect', 'reclassifySelectAllRow', 'reclassifySelectAllCheckbox', 'reclassifyCountLabel',
       'reclassifyPreviewList', 'reclassifyEmptyHint', 'reclassifyApplyBtn', 'cleanupDuplicateCatsBtn'
@@ -675,9 +690,12 @@ import {
       var key = r.date.slice(0, 7);
       if (key in totals) totals[key] += r.amount;
     });
-    return months.map(function (m) { return { label: m.label, value: totals[m.key] }; });
+    return months.map(function (m) { return { label: m.label, key: m.key, value: totals[m.key] }; });
   }
-  function buildTrendChart(svg, data) {
+  // opts.selectedKey：目前被點選篩選中的月份 key，該長條要用不同顏色標出來；
+  // opts.onSelect(key)：點某個長條時呼叫，交給呼叫端決定要不要套用篩選。
+  function buildTrendChart(svg, data, opts) {
+    opts = opts || {};
     svg.innerHTML = '';
     var w = 300, h = 160, padBottom = 22, padTop = 20;
     var max = Math.max.apply(null, data.map(function (d) { return d.value; }).concat([1]));
@@ -691,8 +709,18 @@ import {
       rect.setAttribute('x', x); rect.setAttribute('y', y);
       rect.setAttribute('width', barW); rect.setAttribute('height', Math.max(barH, 0));
       rect.setAttribute('rx', 4);
-      rect.style.fill = 'var(--accent)';
+      rect.style.fill = d.key === opts.selectedKey ? 'var(--expense-color)' : 'var(--accent)';
+      rect.style.cursor = 'pointer';
+      if (opts.onSelect) rect.addEventListener('click', function () { opts.onSelect(d.key); });
       svg.appendChild(rect);
+      // 長條本身很細，點擊熱區故意加寬到整個 gap 寬度，手機上比較好點準。
+      var hitArea = document.createElementNS(SVG_NS, 'rect');
+      hitArea.setAttribute('x', gap * i); hitArea.setAttribute('y', 0);
+      hitArea.setAttribute('width', gap); hitArea.setAttribute('height', h);
+      hitArea.style.fill = 'transparent';
+      hitArea.style.cursor = 'pointer';
+      if (opts.onSelect) hitArea.addEventListener('click', function () { opts.onSelect(d.key); });
+      svg.appendChild(hitArea);
 
       if (d.value > 0) {
         var valLabel = document.createElementNS(SVG_NS, 'text');
@@ -712,19 +740,47 @@ import {
       svg.appendChild(xLabel);
     });
   }
-  function openCategoryDrilldown(categoryId) {
+  function monthKeyLabel(key) {
+    var p = key.split('-');
+    return p[0] + '年' + Number(p[1]) + '月';
+  }
+  function renderDrilldownView() {
+    var categoryId = state.categoryDrilldown;
     var cat = findCat(categoryId);
+    var monthData = monthlyTotalsForCategory(categoryId, state.chartType, 6);
+    buildTrendChart(els.trendChart, monthData, {
+      selectedKey: state.drilldownMonthFilter,
+      onSelect: function (key) {
+        state.drilldownMonthFilter = state.drilldownMonthFilter === key ? null : key;
+        renderDrilldownView();
+      }
+    });
+
+    var recs, labelText;
+    if (state.drilldownMonthFilter) {
+      recs = sortRecs(state.records.filter(function (r) {
+        return r.categoryId === categoryId && r.date.slice(0, 7) === state.drilldownMonthFilter;
+      }));
+      labelText = monthKeyLabel(state.drilldownMonthFilter);
+    } else {
+      recs = reportFilteredRecords().filter(function (r) { return r.categoryId === categoryId; });
+      labelText = periodLabelText();
+    }
+    var total = recs.reduce(function (s, r) { return s + r.amount; }, 0);
+    els.drilldownTitle.textContent = catDisplayName(cat) + '（' + labelText + '）' + formatMoney(total);
+    els.drilldownMonthClearBtn.classList.toggle('hidden', !state.drilldownMonthFilter);
+    renderGroupedRecordList(els.drilldownRecordsList, recs, '這段期間這個分類沒有紀錄');
+  }
+  function openCategoryDrilldown(categoryId) {
     state.categoryDrilldown = categoryId;
+    state.drilldownMonthFilter = null;
     els.reportMainView.classList.add('hidden');
     els.categoryDrilldownView.classList.remove('hidden');
-    var recs = reportFilteredRecords().filter(function (r) { return r.categoryId === categoryId; });
-    var total = recs.reduce(function (s, r) { return s + r.amount; }, 0);
-    els.drilldownTitle.textContent = catDisplayName(cat) + '（' + periodLabelText() + '）' + formatMoney(total);
-    buildTrendChart(els.trendChart, monthlyTotalsForCategory(categoryId, state.chartType, 6));
-    renderGroupedRecordList(els.drilldownRecordsList, recs, '這段期間這個分類沒有紀錄');
+    renderDrilldownView();
   }
   function closeDrilldown() {
     state.categoryDrilldown = null;
+    state.drilldownMonthFilter = null;
     els.categoryDrilldownView.classList.add('hidden');
     els.reportMainView.classList.remove('hidden');
   }
@@ -771,6 +827,8 @@ import {
       container.appendChild(empty);
       return;
     }
+    var dayTotals = {};
+    recs.forEach(function (r) { dayTotals[r.date] = (dayTotals[r.date] || 0) + (r.type === 'expense' ? -r.amount : r.amount); });
     var lastDateKey = null;
     recs.forEach(function (r) {
       if (r.date !== lastDateKey) {
@@ -778,7 +836,11 @@ import {
         var label = document.createElement('div');
         label.className = 'day-group-label';
         var dObj = fromKey(r.date);
-        label.textContent = isSameDay(dObj, new Date()) ? ('今天 ' + shortDate(dObj)) : (shortDate(dObj) + ' (' + WEEKDAY[dObj.getDay()] + ')');
+        var dateText = dObj.getFullYear() + '年' + (dObj.getMonth() + 1) + '月' + dObj.getDate() + '日 (' + WEEKDAY[dObj.getDay()] + ')';
+        if (isSameDay(dObj, new Date())) dateText = '今天 ' + dateText;
+        var dayNet = dayTotals[r.date];
+        label.innerHTML = '<span class="day-group-date">' + escapeHtml(dateText) + '</span>' +
+          '<span class="day-group-total ' + (dayNet < 0 ? 'expense' : 'income') + '">' + formatMoney(dayNet) + '</span>';
         container.appendChild(label);
       }
       container.appendChild(buildRecordRow(r));
@@ -836,14 +898,15 @@ import {
     els.calStatTotal.textContent = formatMoney(monthIncome - monthExpense);
 
     var q = state.searchQuery.trim();
-    if (state.calendarSelectedDay && !q) {
+    var advActive = hasActiveSearchFilters();
+    if (state.calendarSelectedDay && !advActive) {
       var dObj = fromKey(state.calendarSelectedDay);
       els.calendarDayClearBtn.textContent = '篩選：' + shortDate(dObj) + '（' + WEEKDAY[dObj.getDay()] + '）　✕ 清除篩選';
       els.calendarDayClearBtn.classList.remove('hidden');
     } else {
       els.calendarDayClearBtn.classList.add('hidden');
     }
-    els.calendarRecordsHead.textContent = q ? '紀錄・搜尋「' + q + '」' : '紀錄・' + month.getFullYear() + '年' + (month.getMonth() + 1) + '月';
+    els.calendarRecordsHead.textContent = advActive ? ('紀錄・篩選中' + (q ? '「' + q + '」' : '')) : '紀錄・' + month.getFullYear() + '年' + (month.getMonth() + 1) + '月';
 
     renderGroupedRecordList(els.recordsList, calendarFilteredRecords(), '這段期間還沒有紀錄，開始記一筆吧！');
   }
@@ -1387,7 +1450,7 @@ import {
     updateQuickPreview();
     renderCalendarTab();
     renderReportTab();
-    if (state.categoryDrilldown) openCategoryDrilldown(state.categoryDrilldown);
+    if (state.categoryDrilldown) renderDrilldownView();
   }
 
   // ---------- events ----------
@@ -1455,6 +1518,32 @@ import {
         renderCalendarTab();
       });
     });
+    els.searchAdvToggle.addEventListener('click', function () {
+      els.searchAdvPanel.classList.toggle('hidden');
+    });
+    function bindAmountFilterInput(input, key) {
+      input.addEventListener('input', function () {
+        var v = input.value.trim();
+        state.searchFilters[key] = v === '' ? null : parseFloat(v);
+        renderCalendarTab();
+      });
+    }
+    bindAmountFilterInput(els.searchAmountMin, 'amountMin');
+    bindAmountFilterInput(els.searchAmountMax, 'amountMax');
+    function bindDateFilterInput(input, key) {
+      input.addEventListener('change', function () {
+        state.searchFilters[key] = input.value || null;
+        renderCalendarTab();
+      });
+    }
+    bindDateFilterInput(els.searchDateFrom, 'dateFrom');
+    bindDateFilterInput(els.searchDateTo, 'dateTo');
+    els.searchAdvClearBtn.addEventListener('click', function () {
+      state.searchFilters = { amountMin: null, amountMax: null, dateFrom: null, dateTo: null };
+      els.searchAmountMin.value = ''; els.searchAmountMax.value = '';
+      els.searchDateFrom.value = ''; els.searchDateTo.value = '';
+      renderCalendarTab();
+    });
 
     Array.prototype.forEach.call(els.bottomTabs.querySelectorAll('.bottom-tab-btn'), function (btn) {
       btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
@@ -1474,6 +1563,10 @@ import {
       renderCalendarTab();
     });
     els.drilldownBackBtn.addEventListener('click', closeDrilldown);
+    els.drilldownMonthClearBtn.addEventListener('click', function () {
+      state.drilldownMonthFilter = null;
+      renderDrilldownView();
+    });
 
     Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-type]'), function (btn) {
       btn.addEventListener('click', function () {
@@ -1678,8 +1771,24 @@ import {
     renderChangelog();
     initCloudSync();
 
+    // 開場的載入畫面：等 service worker 註冊/檢查更新完成才收起，讓使用者確定進來的是最新版本，
+    // 不是還沒套用更新的舊快取。網路不通或檢查卡住時，2.5 秒逾時還是要放行，不能卡死使用者進不去。
+    var loadingHidden = false;
+    function hideAppLoading() {
+      if (loadingHidden) return;
+      loadingHidden = true;
+      var el = document.getElementById('appLoading');
+      if (!el) return;
+      el.classList.add('app-loading-hide');
+      setTimeout(function () { el.remove(); }, 300);
+    }
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-      navigator.serviceWorker.register('sw.js').catch(function () {});
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        return reg.update().catch(function () {});
+      }).catch(function () {}).then(hideAppLoading);
+      setTimeout(hideAppLoading, 2500);
+    } else {
+      hideAppLoading();
     }
   }
 
