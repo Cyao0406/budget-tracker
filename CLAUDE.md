@@ -40,6 +40,7 @@ sw.js                Service worker（快取策略見下方「已知眉角」）
 icons/               PWA 圖示（192/512/maskable，用 PowerShell + System.Drawing 產生）
 README.md            面向使用者/開發者的簡短說明
 ROADMAP.md           未來規劃與技術債
+VENDOR_RISK.md       Firebase 等第三方服務的風險與退場計畫（政策/定價變動時怎麼辦）
 ```
 
 **資料模型：**

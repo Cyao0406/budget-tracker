@@ -57,8 +57,9 @@ import {
   var DEFAULT_EXPENSE_CATS = [
     { name: '餐飲', colorVar: '--series-1', icon: '🍚', keywords: ['早餐', '午餐', '晚餐', '消夜', '宵夜', '咖啡', '飲料', '超商', '全家', '7-11', '711', '7-eleven', '萊爾富', 'ok超商', '餐廳', '小吃', '火鍋', '便當', '飲品', '手搖', '星巴克', '麥當勞', '肯德基', '拉麵', '牛肉麵', '早午餐', '外送', 'foodpanda', 'ubereats', '飲食費'] },
     { name: '交通', colorVar: '--series-2', icon: '🚗', keywords: ['捷運', '公車', '計程車', 'uber', '加油', '停車', '高鐵', '台鐵', '悠遊卡', '機車', '油錢', '過路費', '停車費', '火車', '客運', '交通費'] },
-    { name: '購物', colorVar: '--series-3', icon: '🛍️', keywords: ['網購', '蝦皮', 'momo', '衣服', '鞋子', '日用品', '大賣場', 'costco', '好市多', '家樂福', '全聯', '寶雅', '無印良品', 'ikea', '購物', '美容'] },
-    { name: '娛樂', colorVar: '--series-4', icon: '🎮', keywords: ['電影', '遊戲', 'ktv', '唱歌', '旅遊', '訂閱', 'netflix', 'spotify', 'disney', '展覽', '演唱會', '娛樂費', '訂閱類娛樂費', '旅遊費'] },
+    { name: '購物', colorVar: '--series-3', icon: '🛒', keywords: ['網購', '蝦皮', 'momo', '衣服', '鞋子', '日用品', '大賣場', 'costco', '好市多', '家樂福', '全聯', '寶雅', '無印良品', 'ikea', '購物', '美容'] },
+    { name: '娛樂', colorVar: '--series-4', icon: '🎮', keywords: ['電影', '遊戲', 'ktv', '唱歌', '旅遊', '展覽', '演唱會', '娛樂費', '旅遊費'] },
+    { name: '訂閱費', colorVar: '--pastel-6', icon: '💳', keywords: ['netflix', 'spotify', 'disney', 'disney+', 'youtube premium', 'icloud', 'apple one', 'google one', 'microsoft 365', 'office 365', 'chatgpt', 'claude', 'claude pro', 'cursor', 'openai', 'notion', 'dropbox', 'adobe', 'kkbox', 'friday影音', 'myvideo', 'hbo', 'prime', 'overleaf', 'genspark', 'hamivideo', 'speak', '健身房', '健身房會費', '會員費', '月費', '年費', '訂閱', '訂閱類娛樂費', 'gym'] },
     { name: '居家', colorVar: '--series-5', icon: '🏠', keywords: ['房租', '水電', '瓦斯', '網路費', '管理費', '家具', '電費', '水費', '房貸', '水電費', '電話費', '房費', '家庭開銷'] },
     { name: '醫療', colorVar: '--series-6', icon: '💊', keywords: ['藥局', '醫院', '診所', '健保', '掛號費', '牙醫', '眼科', '醫療費'] },
     { name: '教育', colorVar: '--series-7', icon: '📚', keywords: ['學費', '書籍', '課程', '補習', '文具', '教材', '教育費'] },
@@ -134,13 +135,26 @@ import {
   // ---------- storage ----------
   function loadCategories() {
     var raw = localStorage.getItem(STORAGE.categories);
+    var cats = null;
     if (raw) {
-      try { return JSON.parse(raw); } catch (e) { /* fall through to defaults */ }
+      try { cats = JSON.parse(raw); } catch (e) { cats = null; }
     }
-    var cats = [];
-    DEFAULT_EXPENSE_CATS.forEach(function (c) { cats.push(Object.assign({ id: uid(), type: 'expense' }, c)); });
-    DEFAULT_INCOME_CATS.forEach(function (c) { cats.push(Object.assign({ id: uid(), type: 'income' }, c)); });
-    localStorage.setItem(STORAGE.categories, JSON.stringify(cats));
+    if (!cats) {
+      cats = [];
+      DEFAULT_EXPENSE_CATS.forEach(function (c) { cats.push(Object.assign({ id: uid(), type: 'expense' }, c)); });
+      DEFAULT_INCOME_CATS.forEach(function (c) { cats.push(Object.assign({ id: uid(), type: 'income' }, c)); });
+      localStorage.setItem(STORAGE.categories, JSON.stringify(cats));
+      return cats;
+    }
+    // 既有使用者（本機已經有資料）：後來才新增進 DEFAULT_EXPENSE_CATS 的分類不會自動出現，
+    // 用固定 id 補一次——固定 id 是故意的，不是隨機 uid()，這樣就算好幾台裝置各自在還沒
+    // 同步的情況下都補了這筆，之後同步時會收斂成同一份文件，不會變成好幾筆重複分類。
+    var hasSubscription = cats.some(function (c) { return c.type === 'expense' && c.name === '訂閱費'; });
+    if (!hasSubscription) {
+      var def = DEFAULT_EXPENSE_CATS.find(function (c) { return c.name === '訂閱費'; });
+      cats.push(Object.assign({ id: 'cat-subscription-default', type: 'expense' }, def));
+      localStorage.setItem(STORAGE.categories, JSON.stringify(cats));
+    }
     return cats;
   }
   function saveCategories() { localStorage.setItem(STORAGE.categories, JSON.stringify(state.categories)); queueCloudSync('categories'); }
@@ -235,33 +249,64 @@ import {
     cloudUser = user;
     renderAuthUi();
     Promise.all([getDocs(cloudCollection('records')), getDocs(cloudCollection('categories'))]).then(function (results) {
-      var cloudEmpty = results[0].empty && results[1].empty;
+      var cloudRecords = []; results[0].forEach(function (d) { cloudRecords.push(d.data()); });
+      var cloudCategories = []; results[1].forEach(function (d) { cloudCategories.push(d.data()); });
+      var cloudEmpty = cloudRecords.length === 0 && cloudCategories.length === 0;
       var localHasData = state.records.length > 0 || state.categories.length > 0;
-      if (!cloudEmpty || !localHasData) {
-        startCloudListeners();
+
+      if (cloudEmpty && localHasData) {
+        // 第一次搬遷：雲端這個帳號完全是空的、本機卻有資料，問過使用者才動作，
+        // 而且搬遷寫入要「等完成」才開始掛 listener，避免上面註解講的競速問題。
+        var ok = window.confirm(
+          '偵測到這台裝置有 ' + state.records.length + ' 筆本機紀錄，要上傳到雲端帳號嗎？\n\n' +
+          '建議先按「取消」，到設定裡用「匯出 CSV」備份一份再回來重新登入觸發這個提示。\n' +
+          '這個動作不會刪除本機資料，只是額外複製一份到雲端。'
+        );
+        if (!ok) {
+          showToast('已取消雲端同步');
+          signOut(auth);
+          return;
+        }
+        lastSynced.records = [];
+        lastSynced.categories = [];
+        Promise.all([diffAndPush('categories', state.categories), diffAndPush('records', state.records)]).then(function () {
+          showToast('已上傳到雲端');
+          startCloudListeners();
+        }).catch(function (e) {
+          console.error('migration push failed', e);
+          showToast('上傳雲端失敗，本機資料不受影響，可以到設定重新登入再試一次');
+          signOut(auth);
+        });
         return;
       }
-      // 第一次搬遷：雲端這個帳號完全是空的、本機卻有資料，問過使用者才動作，
-      // 而且搬遷寫入要「等完成」才開始掛 listener，避免上面註解講的競速問題。
-      var ok = window.confirm(
-        '偵測到這台裝置有 ' + state.records.length + ' 筆本機紀錄，要上傳到雲端帳號嗎？\n\n' +
-        '建議先按「取消」，到設定裡用「匯出 CSV」備份一份再回來重新登入觸發這個提示。\n' +
-        '這個動作不會刪除本機資料，只是額外複製一份到雲端。'
-      );
-      if (!ok) {
-        showToast('已取消雲端同步');
-        signOut(auth);
-        return;
-      }
-      lastSynced.records = [];
-      lastSynced.categories = [];
-      Promise.all([diffAndPush('categories', state.categories), diffAndPush('records', state.records)]).then(function () {
-        showToast('已上傳到雲端');
+
+      // 一般登入（雲端本來就有資料）：先把「登出狀態下這台裝置做的本機異動」推上去，才開始
+      // 監聽——不然沒推上去的本機修改（例如剛設定的分類 emoji、剛編輯的紀錄）會被下面
+      // listener 收到的第一份雲端快照直接蓋掉，之前分類圖示登入後消失就是這個原因。
+      // 這裡故意只做「新增/覆寫」，不做「刪除」：這個時間點沒辦法區分「本機沒有這筆是因為
+      // 使用者在本機刪掉了」還是「這筆是別的裝置已經同步上去、這台裝置還沒同步到過」，
+      // 誤判成前者去刪雲端資料的風險太高。真的在本機刪除的東西，listener 開始監聽後
+      // 雲端版本會自動同步回本機——只是慢一輪生效，不是資料遺失。
+      var pushLocalOnly = function (name, current, cloudArr) {
+        var cloudById = {};
+        cloudArr.forEach(function (x) { cloudById[x.id] = x; });
+        var batch = writeBatch(db);
+        var writes = 0;
+        current.forEach(function (item) {
+          var prev = cloudById[item.id];
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) {
+            batch.set(doc(cloudCollection(name), item.id), item);
+            writes++;
+          }
+        });
+        return writes === 0 ? Promise.resolve() : batch.commit();
+      };
+      Promise.all([
+        pushLocalOnly('categories', state.categories, cloudCategories),
+        pushLocalOnly('records', state.records, cloudRecords)
+      ]).then(startCloudListeners).catch(function (e) {
+        console.error('login sync reconcile failed', e);
         startCloudListeners();
-      }).catch(function (e) {
-        console.error('migration push failed', e);
-        showToast('上傳雲端失敗，本機資料不受影響，可以到設定重新登入再試一次');
-        signOut(auth);
       });
     }).catch(function (e) {
       console.error('cloud init failed', e);
@@ -545,7 +590,7 @@ import {
     }
     var lastDateKey = null;
     recs.forEach(function (r) {
-      if (state.period !== 'day' && r.date !== lastDateKey) {
+      if ((state.period !== 'day' || state.searchQuery.trim()) && r.date !== lastDateKey) {
         lastDateKey = r.date;
         var label = document.createElement('div');
         label.className = 'day-group-label';
@@ -912,6 +957,9 @@ import {
     state.records.splice(idx, 1);
     saveRecords();
     renderAll();
+    // 細微震動給刪除動作一點回饋感；iOS Safari 沒有實作 Vibration API，這裡呼叫沒有反應，
+    // 是平台限制不是 bug，Android Chrome／桌機瀏覽器才會真的震動。
+    if (navigator.vibrate) navigator.vibrate(15);
     var cat = findCat(removed.categoryId);
     showUndoToast('已刪除　' + catDisplayName(cat) + ' ' + formatMoney(removed.amount), function () {
       state.records.push(removed);
