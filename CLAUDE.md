@@ -113,6 +113,8 @@ cd "C:\Users\user\OneDrive\桌面\10-19_System_Automation\15 App Projects\budget
 
 **Git 慣例：** 每完成一個獨立功能/修正就各自 commit + push，不要把好幾個改動囤在一起才存 —— 使用者明確要求要有清楚的版本記錄可以回退（`git revert <hash>`），不要用 `git reset --hard` 改寫歷史除非使用者特別要求。
 
+**部署工作流程（2026-08-13 使用者確認）：** 每次改完程式碼，先用本機伺服器（`localhost:8791`）搭配假資料（`javascript_tool` 直接操作 DOM/`localStorage`，不要碰使用者真實帳號的 Firestore）驗證功能正常，接著可以**直接 commit + push + `firebase deploy --only hosting` 部署到正式站，不用每次都先問過才部署**——這是使用者明確授權的日常節奏，不算需要另外確認的「風險操作」。前提只有一個：**不能動到使用者的真實資料**（例如不要在正式站上用假帳號操作真實 Firestore、不要寫任何會清空/覆蓋使用者既有資料的搬遷邏輯又沒讓她過目）。如果某次改動的風險特別高（例如直接改雲端同步的資料搬遷/合併邏輯、可能造成資料遺失），還是要照本機/emulator 驗證過的謹慎程度衡量，但「要不要現在部署」這件事本身不用再開口問。
+
 ## 已知眉角
 
 - **Service worker 快取**：`sw.js` 改成 network-first（有網路一定拿最新版本，只有離線才退回用快取）——一開始是 cache-first（先回快取、背景才更新），導致使用者關掉重開看到的還是舊版，要重整兩次才會是新的，造成不少困惑，2026-08-12 改掉了。只在 `location.hostname === 'localhost'` 或 https 才會註冊（用區網 IP 測試手機時不會註冊）。改 `sw.js` 本身或快取策略時記得同步把 `CACHE_NAME` 往上加版號，強制舊快取失效。
