@@ -145,7 +145,9 @@ import {
     calendarTabMonth: new Date(),
     calendarSelectedDay: null,
     categoryDrilldown: null,
-    chartTooltipCategoryId: null
+    chartTooltipCategoryId: null,
+    reclassifyType: 'expense',
+    reclassifyPreview: []
   };
 
   // ---------- storage ----------
@@ -461,7 +463,10 @@ import {
       'bottomTabs', 'tabInput', 'tabCalendar', 'tabReport',
       'calBigPrevMonth', 'calBigNextMonth', 'calBigMonthLabel', 'calendarGridBig',
       'calStatIncome', 'calStatExpense', 'calStatTotal', 'calendarRecordsHead', 'calendarDayClearBtn',
-      'reportMainView', 'categoryDrilldownView', 'drilldownBackBtn', 'drilldownTitle', 'trendChart', 'drilldownRecordsList'
+      'reportMainView', 'categoryDrilldownView', 'drilldownBackBtn', 'drilldownTitle', 'trendChart', 'drilldownRecordsList',
+      'reclassifyBtn', 'reclassifySheet', 'reclassifyBackdrop', 'reclassifyCloseBtn', 'reclassifyTypeToggle',
+      'reclassifySourceSelect', 'reclassifySelectAllRow', 'reclassifySelectAllCheckbox', 'reclassifyCountLabel',
+      'reclassifyPreviewList', 'reclassifyEmptyHint', 'reclassifyApplyBtn'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
   }
 
@@ -964,6 +969,88 @@ import {
     });
   }
 
+  // ---------- settings: 重新套用關鍵字分類 ----------
+  // 用途：例如新增了「訂閱費」分類後，舊紀錄還留在當初記帳時唯一能對到的「娛樂」裡，
+  // 不會自動回溯改分類。這裡讓使用者挑一個來源分類，對它底下每筆紀錄重新跑一次跟
+  // 快速輸入同一套的 guessCategory() 判斷，列出「建議」跟現在不同的紀錄給使用者勾選
+  // 確認後才搬移，不會自動全部套用，避免誤搬。
+  function renderReclassifySourceOptions() {
+    var cats = catsOfType(state.reclassifyType);
+    els.reclassifySourceSelect.innerHTML = cats.map(function (c) {
+      return '<option value="' + c.id + '">' + escapeHtml(catDisplayName(c)) + '</option>';
+    }).join('');
+    if (cats.length) els.reclassifySourceSelect.value = cats[0].id;
+  }
+  function renderReclassifyPreview() {
+    var sourceId = els.reclassifySourceSelect.value;
+    var sourceCat = findCat(sourceId);
+    var preview = [];
+    if (sourceCat) {
+      state.records.forEach(function (r) {
+        if (r.categoryId !== sourceId || r.type !== state.reclassifyType) return;
+        var suggestion = guessCategory(r.note, r.type);
+        if (suggestion && suggestion.id !== sourceId) preview.push({ record: r, suggestion: suggestion });
+      });
+      preview.sort(function (a, b) { return (b.record.createdAt || 0) - (a.record.createdAt || 0); });
+    }
+    state.reclassifyPreview = preview;
+
+    els.reclassifyPreviewList.innerHTML = '';
+    var hasItems = preview.length > 0;
+    els.reclassifyEmptyHint.classList.toggle('hidden', hasItems);
+    els.reclassifySelectAllRow.classList.toggle('hidden', !hasItems);
+    els.reclassifyApplyBtn.classList.toggle('hidden', !hasItems);
+    els.reclassifySelectAllCheckbox.checked = true;
+
+    preview.forEach(function (item, idx) {
+      var r = item.record;
+      var row = document.createElement('label');
+      row.className = 'reclassify-item';
+      row.innerHTML =
+        '<input type="checkbox" class="reclassify-item-check" data-idx="' + idx + '" checked>' +
+        '<span class="reclassify-item-main">' +
+          '<span class="reclassify-item-note">' + escapeHtml(r.note || '（無備註）') + '</span>' +
+          '<span class="reclassify-item-meta">' + escapeHtml(r.date) + '　' + formatMoney(r.amount) + '</span>' +
+        '</span>' +
+        '<span class="reclassify-item-arrow">→ ' + escapeHtml(catDisplayName(item.suggestion)) + '</span>';
+      row.querySelector('.reclassify-item-check').addEventListener('change', updateReclassifyCountLabel);
+      els.reclassifyPreviewList.appendChild(row);
+    });
+    updateReclassifyCountLabel();
+  }
+  function updateReclassifyCountLabel() {
+    var boxes = els.reclassifyPreviewList.querySelectorAll('.reclassify-item-check');
+    var checked = Array.prototype.filter.call(boxes, function (b) { return b.checked; }).length;
+    els.reclassifyCountLabel.textContent = '全選（共 ' + boxes.length + ' 筆建議變動，已勾選 ' + checked + ' 筆）';
+    els.reclassifySelectAllCheckbox.checked = boxes.length > 0 && checked === boxes.length;
+  }
+  function openReclassifySheet() {
+    state.reclassifyType = 'expense';
+    Array.prototype.forEach.call(els.reclassifyTypeToggle.querySelectorAll('.type-toggle-btn'), function (b) {
+      b.classList.toggle('active', b.dataset.rtype === 'expense');
+    });
+    renderReclassifySourceOptions();
+    renderReclassifyPreview();
+    els.reclassifySheet.classList.remove('hidden');
+  }
+  function closeReclassifySheet() { els.reclassifySheet.classList.add('hidden'); }
+  function applyReclassify() {
+    var boxes = els.reclassifyPreviewList.querySelectorAll('.reclassify-item-check');
+    var count = 0;
+    Array.prototype.forEach.call(boxes, function (b) {
+      if (!b.checked) return;
+      var item = state.reclassifyPreview[Number(b.dataset.idx)];
+      if (!item) return;
+      item.record.categoryId = item.suggestion.id;
+      count++;
+    });
+    if (count === 0) { showToast('沒有勾選任何紀錄'); return; }
+    saveRecords();
+    renderAll();
+    showToast('已更新 ' + count + ' 筆紀錄的分類');
+    renderReclassifyPreview();
+  }
+
   // ---------- CSV export / import ----------
   function exportCsv() {
     var rows = [['date', 'type', 'category', 'amount', 'note']];
@@ -1400,6 +1487,29 @@ import {
       if (toastUndoHandler) toastUndoHandler();
       hideToast();
     });
+
+    els.reclassifyBtn.addEventListener('click', openReclassifySheet);
+    els.reclassifyCloseBtn.addEventListener('click', closeReclassifySheet);
+    els.reclassifyBackdrop.addEventListener('click', closeReclassifySheet);
+    Array.prototype.forEach.call(els.reclassifyTypeToggle.querySelectorAll('.type-toggle-btn'), function (btn) {
+      btn.addEventListener('click', function () {
+        state.reclassifyType = btn.dataset.rtype;
+        Array.prototype.forEach.call(els.reclassifyTypeToggle.querySelectorAll('.type-toggle-btn'), function (b) {
+          b.classList.toggle('active', b === btn);
+        });
+        renderReclassifySourceOptions();
+        renderReclassifyPreview();
+      });
+    });
+    els.reclassifySourceSelect.addEventListener('change', renderReclassifyPreview);
+    els.reclassifySelectAllCheckbox.addEventListener('change', function () {
+      var checked = els.reclassifySelectAllCheckbox.checked;
+      Array.prototype.forEach.call(els.reclassifyPreviewList.querySelectorAll('.reclassify-item-check'), function (b) {
+        b.checked = checked;
+      });
+      updateReclassifyCountLabel();
+    });
+    els.reclassifyApplyBtn.addEventListener('click', applyReclassify);
   }
 
   // ---------- init ----------

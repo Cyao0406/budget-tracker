@@ -313,11 +313,16 @@ body {
 .chart-tooltip .tooltip-amt { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .chart-tooltip .tooltip-pct { font-size: 12px; opacity: 0.8; margin-top: 2px; }
 
-.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.legend {
+  list-style: none; margin: 14px 0 0; padding: 12px 0 0; display: flex; flex-direction: column;
+  border-top: 1px solid var(--border);
+}
 .legend li {
   display: flex; align-items: center; gap: 8px; font-size: 13px;
-  cursor: pointer; border-radius: 8px; padding: 3px 6px; margin: 0 -6px;
+  cursor: pointer; padding: 12px 6px; margin: 0 -6px;
+  border-bottom: 1px solid var(--border);
 }
+.legend li:last-child { border-bottom: none; }
 .legend li:active { background: var(--page); }
 .legend .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .legend .name { color: var(--text-primary); font-weight: 600; }
@@ -523,6 +528,26 @@ body {
 .cloud-sync-section .kw-label { margin: 0 0 8px; }
 .cloud-sync-section #authStatusHint { margin: 0 0 8px; }
 .file-import-btn { cursor: pointer; }
+
+#reclassifyBtn { display: block; width: 100%; margin-top: 10px; text-align: center; }
+#reclassifySheet .kw-label { font-size: 11px; color: var(--text-muted); margin: 12px 0 4px; }
+.reclassify-select {
+  width: 100%; height: 40px; padding: 0 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--border); background: var(--page); color: var(--text-primary); font-size: 14px;
+}
+.reclassify-select-all-row { margin: 14px 0 2px; }
+.reclassify-select-all-row.hidden { display: none; }
+.reclassify-select-all { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); cursor: pointer; }
+.reclassify-preview-list { display: flex; flex-direction: column; }
+.reclassify-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 2px;
+  border-bottom: 1px solid var(--gridline); cursor: pointer;
+}
+.reclassify-item:last-child { border-bottom: none; }
+.reclassify-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.reclassify-item-note { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reclassify-item-meta { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.reclassify-item-arrow { font-size: 12px; color: var(--accent); font-weight: 600; white-space: nowrap; flex-shrink: 0; }
 
 .version-btn {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
