@@ -33,118 +33,189 @@
 
   <main class="content">
 
-    <!-- Date selector -->
-    <section class="date-bar">
-      <button type="button" class="date-nav" id="datePrevBtn" aria-label="前一天">‹</button>
-      <button type="button" class="date-display" id="dateDisplayBtn">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-        <span id="dateDisplayText">今天</span>
-      </button>
-      <button type="button" class="date-nav" id="dateNextBtn" aria-label="後一天">›</button>
-      <button type="button" class="today-btn" id="todayBtn">回今天</button>
-    </section>
+    <!-- ============ 輸入 tab ============ -->
+    <div class="tab-page" id="tabInput">
+      <!-- Date selector -->
+      <section class="date-bar">
+        <button type="button" class="date-nav" id="datePrevBtn" aria-label="前一天">‹</button>
+        <button type="button" class="date-display" id="dateDisplayBtn">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <span id="dateDisplayText">今天</span>
+        </button>
+        <button type="button" class="date-nav" id="dateNextBtn" aria-label="後一天">›</button>
+        <button type="button" class="today-btn" id="todayBtn">回今天</button>
+      </section>
 
-    <!-- Custom calendar popup -->
-    <div class="calendar-popup hidden" id="calendarPopup">
-      <div class="calendar-head">
-        <button type="button" id="calPrevMonth" aria-label="上個月">‹</button>
-        <span id="calMonthLabel"></span>
-        <button type="button" id="calNextMonth" aria-label="下個月">›</button>
+      <!-- Custom calendar popup（挑要記到哪一天用的小彈窗） -->
+      <div class="calendar-popup hidden" id="calendarPopup">
+        <div class="calendar-head">
+          <button type="button" id="calPrevMonth" aria-label="上個月">‹</button>
+          <span id="calMonthLabel"></span>
+          <button type="button" id="calNextMonth" aria-label="下個月">›</button>
+        </div>
+        <div class="calendar-weekdays">
+          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
       </div>
-      <div class="calendar-weekdays">
-        <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+
+      <!-- Quick add form -->
+      <section class="card add-card">
+        <div class="type-toggle" role="tablist" aria-label="收支類型">
+          <button type="button" class="type-toggle-btn expense active" data-type="expense" role="tab" aria-selected="true">支出</button>
+          <button type="button" class="type-toggle-btn income" data-type="income" role="tab" aria-selected="false">收入</button>
+        </div>
+
+        <form id="quickAddForm" autocomplete="off">
+          <div class="quick-input-row">
+            <input type="text" id="quickInput" placeholder="例如：早餐 全家 150" inputmode="text" aria-label="快速輸入項目與金額">
+            <button type="submit" class="add-btn" id="addBtn" aria-label="新增紀錄">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+          <p class="hint">格式：項目內容 金額（最後的數字會被判斷為金額，並自動猜測分類）</p>
+
+          <div class="parse-preview hidden" id="parsePreview">
+            <span class="parse-amount" id="parseAmount"></span>
+            <span class="parse-note" id="parseNote"></span>
+            <button type="button" class="category-chip" id="parseCategoryChip"></button>
+          </div>
+
+          <button type="button" class="advanced-toggle" id="advancedToggle">進階選項 ▾</button>
+
+          <div class="advanced-fields hidden" id="advancedFields">
+            <label class="field">
+              <span>分類</span>
+              <select id="manualCategory"></select>
+            </label>
+            <label class="field">
+              <span>金額</span>
+              <input type="number" id="manualAmount" inputmode="decimal" min="0" step="1" placeholder="0">
+            </label>
+            <label class="field">
+              <span>備註</span>
+              <input type="text" id="manualNote" placeholder="選填">
+            </label>
+          </div>
+        </form>
+      </section>
+
+      <!-- Category quick-pick popup -->
+      <div class="sheet hidden" id="categoryPickSheet">
+        <div class="sheet-backdrop" id="categoryPickBackdrop"></div>
+        <div class="sheet-body">
+          <h2>選擇分類</h2>
+          <div class="category-grid" id="categoryPickGrid"></div>
+          <button type="button" class="sheet-close" id="categoryPickClose">取消</button>
+        </div>
       </div>
-      <div class="calendar-grid" id="calendarGrid"></div>
     </div>
 
-    <!-- Period tabs -->
-    <nav class="period-tabs" id="periodTabs" role="tablist" aria-label="統計週期">
-      <button type="button" class="period-tab active" data-period="day" role="tab" aria-selected="true">日</button>
-      <button type="button" class="period-tab" data-period="week" role="tab" aria-selected="false">週</button>
-      <button type="button" class="period-tab" data-period="month" role="tab" aria-selected="false">月</button>
-    </nav>
+    <!-- ============ 日曆 tab ============ -->
+    <div class="tab-page hidden" id="tabCalendar">
+      <section class="calendar-month-nav">
+        <button type="button" id="calBigPrevMonth" aria-label="上個月">‹</button>
+        <span id="calBigMonthLabel"></span>
+        <button type="button" id="calBigNextMonth" aria-label="下個月">›</button>
+      </section>
 
-    <!-- Summary card -->
-    <section class="card summary-card">
-      <p class="period-range" id="periodRangeLabel"></p>
+      <section class="card calendar-grid-card">
+        <div class="calendar-weekdays">
+          <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+        </div>
+        <div class="calendar-grid-big" id="calendarGridBig"></div>
+      </section>
+
       <div class="stat-row">
         <div class="stat-tile">
-          <span class="stat-label">支出</span>
-          <span class="stat-value expense" id="statExpense">$0</span>
-        </div>
-        <div class="stat-tile">
           <span class="stat-label">收入</span>
-          <span class="stat-value income" id="statIncome">$0</span>
+          <span class="stat-value income" id="calStatIncome">$0</span>
         </div>
         <div class="stat-tile">
-          <span class="stat-label">結餘</span>
-          <span class="stat-value" id="statBalance">$0</span>
+          <span class="stat-label">支出</span>
+          <span class="stat-value expense" id="calStatExpense">$0</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">合計</span>
+          <span class="stat-value" id="calStatTotal">$0</span>
         </div>
       </div>
 
-      <div class="chart-toggle" role="tablist" aria-label="圖表類型">
-        <button type="button" class="chart-toggle-btn active" data-chart-type="expense" role="tab" aria-selected="true">支出佔比</button>
-        <button type="button" class="chart-toggle-btn" data-chart-type="income" role="tab" aria-selected="false">收入佔比</button>
+      <!-- Records list -->
+      <section class="card records-card">
+        <div class="records-head">
+          <h2 id="calendarRecordsHead">紀錄</h2>
+          <button type="button" class="text-btn" id="exportBtn">匯出 CSV</button>
+        </div>
+        <div class="records-search">
+          <input type="search" id="recordsSearchInput" placeholder="搜尋分類、備註或金額" aria-label="搜尋紀錄">
+        </div>
+        <button type="button" class="chart-filter-clear-btn hidden" id="calendarDayClearBtn"></button>
+        <p class="hint">點一下紀錄可以編輯；點日曆上的某一天只看那天，搜尋時會找全部紀錄（不限目前月份）</p>
+        <div id="recordsList" class="records-list">
+          <p class="empty-msg" id="recordsEmptyMsg">這段期間還沒有紀錄，開始記一筆吧！</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ 報表 tab ============ -->
+    <div class="tab-page hidden" id="tabReport">
+      <div id="reportMainView">
+        <!-- Period tabs -->
+        <nav class="period-tabs" id="periodTabs" role="tablist" aria-label="統計週期">
+          <button type="button" class="period-tab active" data-period="day" role="tab" aria-selected="true">日</button>
+          <button type="button" class="period-tab" data-period="week" role="tab" aria-selected="false">週</button>
+          <button type="button" class="period-tab" data-period="month" role="tab" aria-selected="false">月</button>
+        </nav>
+
+        <!-- Summary card -->
+        <section class="card summary-card">
+          <p class="period-range" id="periodRangeLabel"></p>
+          <div class="stat-row">
+            <div class="stat-tile">
+              <span class="stat-label">支出</span>
+              <span class="stat-value expense" id="statExpense">$0</span>
+            </div>
+            <div class="stat-tile">
+              <span class="stat-label">收入</span>
+              <span class="stat-value income" id="statIncome">$0</span>
+            </div>
+            <div class="stat-tile">
+              <span class="stat-label">結餘</span>
+              <span class="stat-value" id="statBalance">$0</span>
+            </div>
+          </div>
+
+          <div class="chart-toggle" role="tablist" aria-label="圖表類型">
+            <button type="button" class="chart-toggle-btn active" data-chart-type="expense" role="tab" aria-selected="true">支出佔比</button>
+            <button type="button" class="chart-toggle-btn" data-chart-type="income" role="tab" aria-selected="false">收入佔比</button>
+          </div>
+
+          <div class="chart-wrap">
+            <svg id="pieChart" viewBox="0 0 200 200" width="200" height="200" role="img" aria-labelledby="pieChartDesc"></svg>
+            <div class="chart-empty hidden" id="chartEmpty">這段期間還沒有紀錄</div>
+            <div class="chart-tooltip hidden" id="chartTooltip"></div>
+            <p class="sr-only" id="pieChartDesc">分類佔比圓餅圖，點一下色塊看金額</p>
+          </div>
+          <ul class="legend" id="chartLegend"></ul>
+        </section>
       </div>
 
-      <button type="button" class="chart-filter-clear-btn hidden" id="chartFilterClearBtn"></button>
-
-      <div class="chart-wrap">
-        <svg id="pieChart" viewBox="0 0 200 200" width="200" height="200" role="img" aria-labelledby="pieChartDesc"></svg>
-        <div class="chart-empty hidden" id="chartEmpty">這段期間還沒有紀錄</div>
-        <p class="sr-only" id="pieChartDesc">分類佔比圓餅圖</p>
-      </div>
-      <ul class="legend" id="chartLegend"></ul>
-    </section>
-
-    <!-- Quick add form -->
-    <section class="card add-card">
-      <div class="type-toggle" role="tablist" aria-label="收支類型">
-        <button type="button" class="type-toggle-btn expense active" data-type="expense" role="tab" aria-selected="true">支出</button>
-        <button type="button" class="type-toggle-btn income" data-type="income" role="tab" aria-selected="false">收入</button>
-      </div>
-
-      <form id="quickAddForm" autocomplete="off">
-        <div class="quick-input-row">
-          <input type="text" id="quickInput" placeholder="例如：早餐 全家 150" inputmode="text" aria-label="快速輸入項目與金額">
-          <button type="submit" class="add-btn" id="addBtn" aria-label="新增紀錄">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          </button>
-        </div>
-        <p class="hint">格式：項目內容 金額（最後的數字會被判斷為金額，並自動猜測分類）</p>
-
-        <div class="parse-preview hidden" id="parsePreview">
-          <span class="parse-amount" id="parseAmount"></span>
-          <span class="parse-note" id="parseNote"></span>
-          <button type="button" class="category-chip" id="parseCategoryChip"></button>
-        </div>
-
-        <button type="button" class="advanced-toggle" id="advancedToggle">進階選項 ▾</button>
-
-        <div class="advanced-fields hidden" id="advancedFields">
-          <label class="field">
-            <span>分類</span>
-            <select id="manualCategory"></select>
-          </label>
-          <label class="field">
-            <span>金額</span>
-            <input type="number" id="manualAmount" inputmode="decimal" min="0" step="1" placeholder="0">
-          </label>
-          <label class="field">
-            <span>備註</span>
-            <input type="text" id="manualNote" placeholder="選填">
-          </label>
-        </div>
-      </form>
-    </section>
-
-    <!-- Category quick-pick popup -->
-    <div class="sheet hidden" id="categoryPickSheet">
-      <div class="sheet-backdrop" id="categoryPickBackdrop"></div>
-      <div class="sheet-body">
-        <h2>選擇分類</h2>
-        <div class="category-grid" id="categoryPickGrid"></div>
-        <button type="button" class="sheet-close" id="categoryPickClose">取消</button>
+      <!-- Category drill-down sub-view -->
+      <div class="hidden" id="categoryDrilldownView">
+        <button type="button" class="drilldown-back-btn" id="drilldownBackBtn">‹ 返回報表</button>
+        <h2 id="drilldownTitle"></h2>
+        <section class="card">
+          <p class="hint">近 6 個月趨勢</p>
+          <div class="trend-chart-wrap">
+            <svg id="trendChart" viewBox="0 0 300 160" role="img" aria-labelledby="trendChartDesc"></svg>
+            <p class="sr-only" id="trendChartDesc">這個分類近 6 個月的金額長條圖</p>
+          </div>
+        </section>
+        <section class="card records-card">
+          <h2>這個分類的紀錄</h2>
+          <div id="drilldownRecordsList" class="records-list"></div>
+        </section>
       </div>
     </div>
 
@@ -158,22 +229,20 @@
       </div>
     </div>
 
-    <!-- Records list -->
-    <section class="card records-card">
-      <div class="records-head">
-        <h2>紀錄</h2>
-        <button type="button" class="text-btn" id="exportBtn">匯出 CSV</button>
-      </div>
-      <div class="records-search">
-        <input type="search" id="recordsSearchInput" placeholder="搜尋分類、備註或金額" aria-label="搜尋紀錄">
-      </div>
-      <p class="hint">點一下紀錄可以編輯，搜尋時會找全部紀錄（不限目前日期範圍）</p>
-      <div id="recordsList" class="records-list">
-        <p class="empty-msg" id="recordsEmptyMsg">這段期間還沒有紀錄，開始記一筆吧！</p>
-      </div>
-    </section>
-
   </main>
+
+  <!-- Bottom tab bar -->
+  <nav class="bottom-tabs" id="bottomTabs" role="tablist" aria-label="主要頁面">
+    <button type="button" class="bottom-tab-btn active" data-tab="input" role="tab" aria-selected="true">
+      <span class="bottom-tab-icon">✏️</span><span>輸入</span>
+    </button>
+    <button type="button" class="bottom-tab-btn" data-tab="calendar" role="tab" aria-selected="false">
+      <span class="bottom-tab-icon">📅</span><span>日曆</span>
+    </button>
+    <button type="button" class="bottom-tab-btn" data-tab="report" role="tab" aria-selected="false">
+      <span class="bottom-tab-icon">📊</span><span>報表</span>
+    </button>
+  </nav>
 
   <!-- Edit record modal -->
   <div class="sheet hidden" id="editRecordSheet">

@@ -10,8 +10,14 @@ import {
   var SVG_NS = 'http://www.w3.org/2000/svg';
   // 給家人/自己看的白話版更新紀錄，完整技術細節在 CLAUDE.md。新增版本時陣列開頭插入一筆，
   // CURRENT_VERSION 記得跟著更新（設定頁的版本號、標籤都是抓這個常數）。
-  var CURRENT_VERSION = 'v2.4';
+  var CURRENT_VERSION = 'v2.5';
   var CHANGELOG = [
+    { version: 'v2.5', name: '介面拆成三個頁面', date: '2026-08-13', notes: [
+      '主畫面拆成「輸入／日曆／報表」三個分頁，底部新增分頁列可以切換',
+      '日曆分頁全新設計：整個月的格子直接顯示每天的收支金額，點某一天可以只看那天的紀錄，下方也有搜尋框',
+      '報表分頁的圓餅圖改成點一下跳出金額泡泡（不會整頁篩選），點分類列表會另外開一頁看那個分類近 6 個月的趨勢長條圖和逐筆紀錄',
+      '一行文字快速記帳（例如「早餐 全家 150」）維持不變，還是輸入分頁的主要記帳方式'
+    ] },
     { version: 'v2.4', name: '修正與微調', date: '2026-08-12', notes: [
       '修正登入雲端同步後，分類 emoji 圖示會消失的問題',
       '新增「訂閱費」分類，跟娛樂費分開（Netflix、Spotify、Claude、Cursor、健身房會費等訂閱制支出）',
@@ -135,7 +141,11 @@ import {
     editingRecordId: null,
     editRecordType: 'expense',
     searchQuery: '',
-    chartFilterCategoryId: null
+    activeTab: 'input',
+    calendarTabMonth: new Date(),
+    calendarSelectedDay: null,
+    categoryDrilldown: null,
+    chartTooltipCategoryId: null
   };
 
   // ---------- storage ----------
@@ -392,12 +402,22 @@ import {
     if (state.period === 'week') return [startOfWeek(d), endOfWeek(d)];
     return [startOfMonth(d), endOfMonth(d)];
   }
-  function filteredRecords() {
+  function sortRecs(recs) {
+    return recs.sort(function (a, b) { return a.date === b.date ? b.createdAt - a.createdAt : (a.date < b.date ? 1 : -1); });
+  }
+  // 報表頁用：純粹依目前選的日/週/月期間篩選，不管搜尋、不管日曆頁選了哪一天。
+  function reportFilteredRecords() {
+    var range = getRange();
+    var startKey = toKey(range[0]), endKey = toKey(range[1]);
+    return sortRecs(state.records.filter(function (r) { return r.date >= startKey && r.date <= endKey; }));
+  }
+  // 日曆頁用：有搜尋字串時故意不限制日期範圍（搜尋的目的就是「不記得是哪一天記的，用關鍵字
+  // 找」，限制在目前瀏覽的月份反而失去搜尋的意義）；沒搜尋時依目前瀏覽的月份，再看有沒有
+  // 額外點選單一天要進一步縮小範圍。
+  function calendarFilteredRecords() {
     var q = state.searchQuery.trim().toLowerCase();
     var recs;
     if (q) {
-      // 搜尋時故意不限制日期範圍：搜尋的目的就是「不記得是哪一天記的，用關鍵字找」，
-      // 限制在目前選到的日/週/月反而失去搜尋的意義。
       recs = state.records.filter(function (r) {
         var cat = findCat(r.categoryId);
         var catName = cat ? cat.name.toLowerCase() : '';
@@ -405,14 +425,14 @@ import {
         return note.indexOf(q) !== -1 || catName.indexOf(q) !== -1 || String(r.amount).indexOf(q) !== -1;
       });
     } else {
-      var range = getRange();
-      var startKey = toKey(range[0]), endKey = toKey(range[1]);
-      recs = state.records.filter(function (r) { return r.date >= startKey && r.date <= endKey; });
+      var monthStartKey = toKey(startOfMonth(state.calendarTabMonth));
+      var monthEndKey = toKey(endOfMonth(state.calendarTabMonth));
+      recs = state.records.filter(function (r) { return r.date >= monthStartKey && r.date <= monthEndKey; });
+      if (state.calendarSelectedDay) {
+        recs = recs.filter(function (r) { return r.date === state.calendarSelectedDay; });
+      }
     }
-    if (state.chartFilterCategoryId) {
-      recs = recs.filter(function (r) { return r.categoryId === state.chartFilterCategoryId; });
-    }
-    return recs.sort(function (a, b) { return a.date === b.date ? b.createdAt - a.createdAt : (a.date < b.date ? 1 : -1); });
+    return sortRecs(recs);
   }
   function periodLabelText() {
     var d = state.selectedDate;
@@ -426,18 +446,22 @@ import {
   function cacheEls() {
     ['themeToggleBtn', 'settingsBtn', 'datePrevBtn', 'dateDisplayBtn', 'dateDisplayText', 'dateNextBtn', 'todayBtn',
       'calendarPopup', 'calPrevMonth', 'calNextMonth', 'calMonthLabel', 'calendarGrid', 'periodTabs',
-      'periodRangeLabel', 'statExpense', 'statIncome', 'statBalance', 'pieChart', 'chartEmpty', 'chartLegend',
+      'periodRangeLabel', 'statExpense', 'statIncome', 'statBalance', 'pieChart', 'chartEmpty', 'chartTooltip', 'chartLegend',
       'quickAddForm', 'quickInput', 'addBtn', 'parsePreview', 'parseAmount', 'parseNote', 'parseCategoryChip',
       'advancedToggle', 'advancedFields', 'manualCategory', 'manualAmount', 'manualNote',
       'categoryPickSheet', 'categoryPickBackdrop', 'categoryPickGrid', 'categoryPickClose',
-      'recordsList', 'recordsSearchInput', 'chartFilterClearBtn',
+      'recordsList', 'recordsSearchInput',
       'exportBtn', 'settingsSheet', 'settingsBackdrop', 'settingsCloseBtn', 'categoryEditList',
       'addCategoryBtn', 'settingsExportBtn', 'importFileInput', 'resetDataBtn', 'toast', 'toastMsg', 'toastUndoBtn',
       'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editTime', 'editCategory',
       'editAmount', 'editNote', 'editDeleteBtn', 'editSaveBtn',
       'mergeCategorySheet', 'mergeCategoryBackdrop', 'mergeCategoryTitle', 'mergeCategoryGrid', 'mergeCategoryCancel',
       'authSignedOut', 'authSignedIn', 'authEmail', 'googleSignInBtn', 'signOutBtn',
-      'currentVersionTag', 'changelogBtn', 'changelogSheet', 'changelogBackdrop', 'changelogCloseBtn', 'changelogList'
+      'currentVersionTag', 'changelogBtn', 'changelogSheet', 'changelogBackdrop', 'changelogCloseBtn', 'changelogList',
+      'bottomTabs', 'tabInput', 'tabCalendar', 'tabReport',
+      'calBigPrevMonth', 'calBigNextMonth', 'calBigMonthLabel', 'calendarGridBig',
+      'calStatIncome', 'calStatExpense', 'calStatTotal', 'calendarRecordsHead', 'calendarDayClearBtn',
+      'reportMainView', 'categoryDrilldownView', 'drilldownBackBtn', 'drilldownTitle', 'trendChart', 'drilldownRecordsList'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
   }
 
@@ -483,6 +507,7 @@ import {
     var offset = 0;
     data.forEach(function (seg) {
       var frac = seg.value / total;
+      var pct = Math.round(frac * 100);
       var len = Math.max(frac * circumference - gap, 0);
       var circle = document.createElementNS(SVG_NS, 'circle');
       circle.setAttribute('cx', cx); circle.setAttribute('cy', cy); circle.setAttribute('r', r);
@@ -493,12 +518,9 @@ import {
       circle.setAttribute('stroke-dashoffset', String(-offset));
       circle.setAttribute('transform', 'rotate(-90 ' + cx + ' ' + cy + ')');
       circle.style.cursor = 'pointer';
-      circle.addEventListener('click', function (catId) {
-        return function () {
-          state.chartFilterCategoryId = state.chartFilterCategoryId === catId ? null : catId;
-          renderAll();
-        };
-      }(seg.id));
+      circle.addEventListener('click', function (seg, pct) {
+        return function () { toggleChartTooltip(seg, pct); };
+      }(seg, pct));
       svg.appendChild(circle);
       offset += frac * circumference;
     });
@@ -517,24 +539,28 @@ import {
     centerValue.textContent = formatMoney(total);
     svg.appendChild(centerValue);
   }
-  function renderSummary() {
-    var recs = filteredRecords();
+  function hideChartTooltip() {
+    state.chartTooltipCategoryId = null;
+    els.chartTooltip.classList.add('hidden');
+  }
+  function toggleChartTooltip(seg, pct) {
+    if (state.chartTooltipCategoryId === seg.id) { hideChartTooltip(); return; }
+    state.chartTooltipCategoryId = seg.id;
+    els.chartTooltip.innerHTML =
+      '<div class="tooltip-name">' + escapeHtml(seg.name) + '</div>' +
+      '<div class="tooltip-amt">' + formatMoney(seg.value) + '</div>' +
+      '<div class="tooltip-pct">' + pct + '%</div>';
+    els.chartTooltip.classList.remove('hidden');
+  }
+  function renderReportTab() {
+    hideChartTooltip();
+    var recs = reportFilteredRecords();
     var totalExpense = 0, totalIncome = 0;
     recs.forEach(function (r) { if (r.type === 'expense') totalExpense += r.amount; else totalIncome += r.amount; });
     els.statExpense.textContent = formatMoney(totalExpense);
     els.statIncome.textContent = formatMoney(totalIncome);
     els.statBalance.textContent = formatMoney(totalIncome - totalExpense);
     els.periodRangeLabel.textContent = periodLabelText();
-    var q = state.searchQuery.trim();
-    document.querySelector('.records-head h2').textContent = q ? '紀錄・搜尋「' + q + '」' : '紀錄・' + periodLabelText();
-
-    if (state.chartFilterCategoryId) {
-      var fcat = findCat(state.chartFilterCategoryId);
-      els.chartFilterClearBtn.textContent = '篩選：' + catDisplayName(fcat) + '　✕ 清除篩選';
-      els.chartFilterClearBtn.classList.remove('hidden');
-    } else {
-      els.chartFilterClearBtn.classList.add('hidden');
-    }
 
     var byCat = {};
     recs.forEach(function (r) {
@@ -552,26 +578,91 @@ import {
       buildDonut(els.pieChart, data, total);
     } else {
       els.pieChart.innerHTML = '';
-      els.chartEmpty.textContent = state.chartFilterCategoryId ? '這個分類這段期間沒有紀錄' : '這段期間還沒有紀錄';
       els.chartEmpty.classList.remove('hidden');
     }
     els.chartLegend.innerHTML = '';
     data.forEach(function (d) {
       var li = document.createElement('li');
       var pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
-      if (state.chartFilterCategoryId === d.id) li.classList.add('selected');
       li.innerHTML = '<span class="dot" style="background:var(' + d.colorVar + ')"></span>' +
         '<span class="name">' + escapeHtml(d.name) + '</span>' +
         '<span class="amt">' + formatMoney(d.value) + '</span>' +
-        '<span class="pct">' + pct + '%</span>';
+        '<span class="pct">' + pct + '%</span>' +
+        '<span class="legend-chevron">›</span>';
       li.addEventListener('click', function (catId) {
-        return function () {
-          state.chartFilterCategoryId = state.chartFilterCategoryId === catId ? null : catId;
-          renderAll();
-        };
+        return function () { openCategoryDrilldown(catId); };
       }(d.id));
       els.chartLegend.appendChild(li);
     });
+  }
+
+  // ---------- 報表：分類趨勢 drill-down ----------
+  function monthlyTotalsForCategory(categoryId, type, monthsBack) {
+    var now = new Date();
+    var months = [];
+    for (var i = monthsBack - 1; i >= 0; i--) {
+      var d = addMonths(new Date(now.getFullYear(), now.getMonth(), 1), -i);
+      months.push({ label: (d.getMonth() + 1) + '月', key: d.getFullYear() + '-' + pad2(d.getMonth() + 1) });
+    }
+    var totals = {};
+    months.forEach(function (m) { totals[m.key] = 0; });
+    state.records.forEach(function (r) {
+      if (r.categoryId !== categoryId || r.type !== type) return;
+      var key = r.date.slice(0, 7);
+      if (key in totals) totals[key] += r.amount;
+    });
+    return months.map(function (m) { return { label: m.label, value: totals[m.key] }; });
+  }
+  function buildTrendChart(svg, data) {
+    svg.innerHTML = '';
+    var w = 300, h = 160, padBottom = 22, padTop = 20;
+    var max = Math.max.apply(null, data.map(function (d) { return d.value; }).concat([1]));
+    var gap = w / data.length;
+    var barW = gap * 0.5;
+    data.forEach(function (d, i) {
+      var barH = max > 0 ? (d.value / max) * (h - padTop - padBottom) : 0;
+      var x = gap * i + (gap - barW) / 2;
+      var y = h - padBottom - barH;
+      var rect = document.createElementNS(SVG_NS, 'rect');
+      rect.setAttribute('x', x); rect.setAttribute('y', y);
+      rect.setAttribute('width', barW); rect.setAttribute('height', Math.max(barH, 0));
+      rect.setAttribute('rx', 4);
+      rect.style.fill = 'var(--accent)';
+      svg.appendChild(rect);
+
+      if (d.value > 0) {
+        var valLabel = document.createElementNS(SVG_NS, 'text');
+        valLabel.setAttribute('x', x + barW / 2); valLabel.setAttribute('y', y - 6);
+        valLabel.setAttribute('text-anchor', 'middle');
+        valLabel.style.fill = 'var(--text-secondary)';
+        valLabel.style.font = '10px system-ui, sans-serif';
+        valLabel.textContent = formatMoney(d.value);
+        svg.appendChild(valLabel);
+      }
+      var xLabel = document.createElementNS(SVG_NS, 'text');
+      xLabel.setAttribute('x', gap * i + gap / 2); xLabel.setAttribute('y', h - 6);
+      xLabel.setAttribute('text-anchor', 'middle');
+      xLabel.style.fill = 'var(--text-muted)';
+      xLabel.style.font = '11px system-ui, sans-serif';
+      xLabel.textContent = d.label;
+      svg.appendChild(xLabel);
+    });
+  }
+  function openCategoryDrilldown(categoryId) {
+    var cat = findCat(categoryId);
+    state.categoryDrilldown = categoryId;
+    els.reportMainView.classList.add('hidden');
+    els.categoryDrilldownView.classList.remove('hidden');
+    var recs = reportFilteredRecords().filter(function (r) { return r.categoryId === categoryId; });
+    var total = recs.reduce(function (s, r) { return s + r.amount; }, 0);
+    els.drilldownTitle.textContent = catDisplayName(cat) + '（' + periodLabelText() + '）' + formatMoney(total);
+    buildTrendChart(els.trendChart, monthlyTotalsForCategory(categoryId, state.chartType, 6));
+    renderGroupedRecordList(els.drilldownRecordsList, recs, '這段期間這個分類沒有紀錄');
+  }
+  function closeDrilldown() {
+    state.categoryDrilldown = null;
+    els.categoryDrilldownView.classList.add('hidden');
+    els.reportMainView.classList.remove('hidden');
   }
 
   // ---------- render: records list ----------
@@ -584,46 +675,112 @@ import {
     if (!c) return '（已刪除分類）';
     return (c.icon ? c.icon + ' ' : '') + c.name;
   }
-  function renderRecordsList() {
-    var recs = filteredRecords();
-    els.recordsList.innerHTML = '';
+  function buildRecordRow(r) {
+    var cat = findCat(r.categoryId);
+    var row = document.createElement('div');
+    row.className = 'record-row';
+    row.innerHTML =
+      '<span class="record-dot" style="background:var(' + (cat ? cat.colorVar : '--series-8') + ')"></span>' +
+      '<span class="record-main">' +
+        '<div class="record-cat">' + escapeHtml(catDisplayName(cat)) + '</div>' +
+        (r.note ? '<div class="record-note">' + escapeHtml(r.note) + '</div>' : '') +
+        '<div class="record-time">' + formatTime(r.createdAt) + '</div>' +
+      '</span>' +
+      '<span class="record-amt ' + r.type + '">' + (r.type === 'expense' ? '-' : '+') + formatMoney(r.amount).replace('-', '') + '</span>' +
+      '<span class="record-chevron">›</span>' +
+      '<button type="button" class="record-del" aria-label="刪除">✕</button>';
+    row.querySelector('.record-del').addEventListener('click', function (e) {
+      e.stopPropagation();
+      deleteRecordWithUndo(r.id);
+    });
+    row.addEventListener('click', function () { openEditRecord(r.id); });
+    return row;
+  }
+  // 分組列出紀錄，每筆都會顯示日期──日曆頁跟分類 drill-down 頁共用這個渲染邏輯。
+  // recs 必須已經照日期/時間排序好（sortRecs()）。
+  function renderGroupedRecordList(container, recs, emptyMsg) {
+    container.innerHTML = '';
     if (!recs.length) {
       var empty = document.createElement('p');
       empty.className = 'empty-msg';
-      empty.textContent = '這段期間還沒有紀錄，開始記一筆吧！';
-      els.recordsList.appendChild(empty);
+      empty.textContent = emptyMsg || '這段期間還沒有紀錄，開始記一筆吧！';
+      container.appendChild(empty);
       return;
     }
     var lastDateKey = null;
     recs.forEach(function (r) {
-      if ((state.period !== 'day' || state.searchQuery.trim()) && r.date !== lastDateKey) {
+      if (r.date !== lastDateKey) {
         lastDateKey = r.date;
         var label = document.createElement('div');
         label.className = 'day-group-label';
         var dObj = fromKey(r.date);
         label.textContent = isSameDay(dObj, new Date()) ? ('今天 ' + shortDate(dObj)) : (shortDate(dObj) + ' (' + WEEKDAY[dObj.getDay()] + ')');
-        els.recordsList.appendChild(label);
+        container.appendChild(label);
       }
-      var cat = findCat(r.categoryId);
-      var row = document.createElement('div');
-      row.className = 'record-row';
-      row.innerHTML =
-        '<span class="record-dot" style="background:var(' + (cat ? cat.colorVar : '--series-8') + ')"></span>' +
-        '<span class="record-main">' +
-          '<div class="record-cat">' + escapeHtml(catDisplayName(cat)) + '</div>' +
-          (r.note ? '<div class="record-note">' + escapeHtml(r.note) + '</div>' : '') +
-          '<div class="record-time">' + formatTime(r.createdAt) + '</div>' +
-        '</span>' +
-        '<span class="record-amt ' + r.type + '">' + (r.type === 'expense' ? '-' : '+') + formatMoney(r.amount).replace('-', '') + '</span>' +
-        '<span class="record-chevron">›</span>' +
-        '<button type="button" class="record-del" aria-label="刪除">✕</button>';
-      row.querySelector('.record-del').addEventListener('click', function (e) {
-        e.stopPropagation();
-        deleteRecordWithUndo(r.id);
-      });
-      row.addEventListener('click', function () { openEditRecord(r.id); });
-      els.recordsList.appendChild(row);
+      container.appendChild(buildRecordRow(r));
     });
+  }
+  function renderCalendarTab() {
+    var month = state.calendarTabMonth;
+    els.calBigMonthLabel.textContent = month.getFullYear() + '年' + (month.getMonth() + 1) + '月';
+
+    var dayTotals = {};
+    var monthKey = month.getFullYear() + '-' + pad2(month.getMonth() + 1);
+    state.records.forEach(function (r) {
+      if (r.date.slice(0, 7) !== monthKey) return;
+      if (!dayTotals[r.date]) dayTotals[r.date] = { income: 0, expense: 0 };
+      dayTotals[r.date][r.type] += r.amount;
+    });
+
+    var gridStart = startOfWeek(startOfMonth(month));
+    els.calendarGridBig.innerHTML = '';
+    var today = new Date();
+    for (var i = 0; i < 42; i++) {
+      var d = addDays(gridStart, i);
+      var key = toKey(d);
+      var cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'calendar-cell';
+      if (d.getMonth() !== month.getMonth()) cell.classList.add('muted');
+      if (isSameDay(d, today)) cell.classList.add('today');
+      if (state.calendarSelectedDay === key) cell.classList.add('selected');
+      var dt = dayTotals[key];
+      var amtHtml = '';
+      if (dt) {
+        var net = dt.income - dt.expense;
+        amtHtml = '<span class="cell-amt ' + (net < 0 ? 'expense' : 'income') + '">' + formatMoney(Math.abs(net)) + '</span>';
+      }
+      cell.innerHTML = '<span class="cell-day">' + d.getDate() + '</span>' + amtHtml;
+      cell.addEventListener('click', function (dateKey) {
+        return function () {
+          state.calendarSelectedDay = state.calendarSelectedDay === dateKey ? null : dateKey;
+          renderCalendarTab();
+        };
+      }(key));
+      els.calendarGridBig.appendChild(cell);
+    }
+
+    var monthStartKey = toKey(startOfMonth(month)), monthEndKey = toKey(endOfMonth(month));
+    var monthIncome = 0, monthExpense = 0;
+    state.records.forEach(function (r) {
+      if (r.date < monthStartKey || r.date > monthEndKey) return;
+      if (r.type === 'income') monthIncome += r.amount; else monthExpense += r.amount;
+    });
+    els.calStatIncome.textContent = formatMoney(monthIncome);
+    els.calStatExpense.textContent = formatMoney(monthExpense);
+    els.calStatTotal.textContent = formatMoney(monthIncome - monthExpense);
+
+    var q = state.searchQuery.trim();
+    if (state.calendarSelectedDay && !q) {
+      var dObj = fromKey(state.calendarSelectedDay);
+      els.calendarDayClearBtn.textContent = '篩選：' + shortDate(dObj) + '（' + WEEKDAY[dObj.getDay()] + '）　✕ 清除篩選';
+      els.calendarDayClearBtn.classList.remove('hidden');
+    } else {
+      els.calendarDayClearBtn.classList.add('hidden');
+    }
+    els.calendarRecordsHead.textContent = q ? '紀錄・搜尋「' + q + '」' : '紀錄・' + month.getFullYear() + '年' + (month.getMonth() + 1) + '月';
+
+    renderGroupedRecordList(els.recordsList, calendarFilteredRecords(), '這段期間還沒有紀錄，開始記一筆吧！');
   }
 
   // ---------- render: quick-add preview ----------
@@ -974,13 +1131,28 @@ import {
     });
   }
 
+  // ---------- tabs ----------
+  var TAB_ELS = null; // lazy — els 要等 cacheEls() 跑完才有值
+  function switchTab(tab) {
+    if (!TAB_ELS) TAB_ELS = { input: els.tabInput, calendar: els.tabCalendar, report: els.tabReport };
+    state.activeTab = tab;
+    Object.keys(TAB_ELS).forEach(function (key) { TAB_ELS[key].classList.toggle('hidden', key !== tab); });
+    Array.prototype.forEach.call(els.bottomTabs.querySelectorAll('.bottom-tab-btn'), function (b) {
+      var active = b.dataset.tab === tab;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    if (tab !== 'report') closeDrilldown();
+  }
+
   // ---------- master render ----------
   function renderAll() {
     renderDateBar();
-    renderSummary();
-    renderRecordsList();
     populateManualCategorySelect();
     updateQuickPreview();
+    renderCalendarTab();
+    renderReportTab();
+    if (state.categoryDrilldown) openCategoryDrilldown(state.categoryDrilldown);
   }
 
   // ---------- events ----------
@@ -1025,25 +1197,40 @@ import {
     Array.prototype.forEach.call(document.querySelectorAll('.chart-toggle-btn'), function (btn) {
       btn.addEventListener('click', function () {
         state.chartType = btn.dataset.chartType;
-        state.chartFilterCategoryId = null; // 支出/收入分類是不同組，切換分頁時舊的分類篩選已經沒有意義
         Array.prototype.forEach.call(document.querySelectorAll('.chart-toggle-btn'), function (b) {
           b.classList.toggle('active', b === btn);
           b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
         });
-        renderSummary();
+        closeDrilldown();
+        renderReportTab();
       });
     });
 
     ['input', 'search'].forEach(function (evt) {
       els.recordsSearchInput.addEventListener(evt, function () {
         state.searchQuery = els.recordsSearchInput.value;
-        renderAll();
+        renderCalendarTab();
       });
     });
-    els.chartFilterClearBtn.addEventListener('click', function () {
-      state.chartFilterCategoryId = null;
-      renderAll();
+
+    Array.prototype.forEach.call(els.bottomTabs.querySelectorAll('.bottom-tab-btn'), function (btn) {
+      btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
     });
+    els.calBigPrevMonth.addEventListener('click', function () {
+      state.calendarTabMonth = addMonths(state.calendarTabMonth, -1);
+      state.calendarSelectedDay = null;
+      renderCalendarTab();
+    });
+    els.calBigNextMonth.addEventListener('click', function () {
+      state.calendarTabMonth = addMonths(state.calendarTabMonth, 1);
+      state.calendarSelectedDay = null;
+      renderCalendarTab();
+    });
+    els.calendarDayClearBtn.addEventListener('click', function () {
+      state.calendarSelectedDay = null;
+      renderCalendarTab();
+    });
+    els.drilldownBackBtn.addEventListener('click', closeDrilldown);
 
     Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-type]'), function (btn) {
       btn.addEventListener('click', function () {
@@ -1224,6 +1411,7 @@ import {
     state.records = loadRecords();
     populateManualCategorySelect();
     bindEvents();
+    switchTab('input');
     renderAll();
     renderChangelog();
     initCloudSync();
