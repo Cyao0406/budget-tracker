@@ -298,13 +298,41 @@ import {
         return;
       }
 
-      // 一般登入（雲端本來就有資料）：先把「登出狀態下這台裝置做的本機異動」推上去，才開始
-      // 監聽——不然沒推上去的本機修改（例如剛設定的分類 emoji、剛編輯的紀錄）會被下面
-      // listener 收到的第一份雲端快照直接蓋掉，之前分類圖示登入後消失就是這個原因。
-      // 這裡故意只做「新增/覆寫」，不做「刪除」：這個時間點沒辦法區分「本機沒有這筆是因為
-      // 使用者在本機刪掉了」還是「這筆是別的裝置已經同步上去、這台裝置還沒同步到過」，
-      // 誤判成前者去刪雲端資料的風險太高。真的在本機刪除的東西，listener 開始監聽後
-      // 雲端版本會自動同步回本機——只是慢一輪生效，不是資料遺失。
+      // 分類重複的根本成因：如果本機這時候的分類清單（不管什麼原因）跟雲端已有的分類
+      // 「同名同類型但 id 不一樣」——例如本機剛好在 loadCategories() 用預設清單重新生成過
+      // 一次——下面的 pushLocalOnly 只用 id 比對，找不到對應的舊 id 就會當成全新分類寫進
+      // 雲端，變成一筆「重複」。這裡在推上去之前，先用「type+name」把本機分類的 id 校正成
+      // 雲端既有那筆的 id（保留本機這筆可能剛改過的圖示/關鍵字等內容），這樣 pushLocalOnly
+      // 才會判斷成「更新既有分類」而不是「新增一筆」。記得同步修正 state.records 裡指向舊 id
+      // 的 categoryId，不然紀錄會變成對不到任何分類。
+      var reconcileCategoryIdsWithCloud = function (localCats, cloudCats, records) {
+        var cloudIds = {};
+        cloudCats.forEach(function (c) { cloudIds[c.id] = true; });
+        var cloudByKey = {};
+        cloudCats.forEach(function (c) { cloudByKey[c.type + '::' + c.name] = c; });
+        var changed = false;
+        localCats.forEach(function (c) {
+          if (cloudIds[c.id]) return; // 本機這筆的 id 雲端本來就有，不用處理
+          var match = cloudByKey[c.type + '::' + c.name];
+          if (!match || match.id === c.id) return;
+          var oldId = c.id;
+          c.id = match.id;
+          records.forEach(function (r) { if (r.categoryId === oldId) r.categoryId = match.id; });
+          changed = true;
+        });
+        return changed;
+      };
+      if (reconcileCategoryIdsWithCloud(state.categories, cloudCategories, state.records)) {
+        localStorage.setItem(STORAGE.categories, JSON.stringify(state.categories));
+        localStorage.setItem(STORAGE.records, JSON.stringify(state.records));
+      }
+
+      // 先把「登出狀態下這台裝置做的本機異動」推上去，才開始監聽——不然沒推上去的本機修改
+      // （例如剛設定的分類 emoji、剛編輯的紀錄）會被下面 listener 收到的第一份雲端快照直接
+      // 蓋掉，之前分類圖示登入後消失就是這個原因。這裡故意只做「新增/覆寫」，不做「刪除」：
+      // 這個時間點沒辦法區分「本機沒有這筆是因為使用者在本機刪掉了」還是「這筆是別的裝置已經
+      // 同步上去、這台裝置還沒同步到過」，誤判成前者去刪雲端資料的風險太高。真的在本機刪除的
+      // 東西，listener 開始監聽後雲端版本會自動同步回本機——只是慢一輪生效，不是資料遺失。
       var pushLocalOnly = function (name, current, cloudArr) {
         var cloudById = {};
         cloudArr.forEach(function (x) { cloudById[x.id] = x; });
@@ -466,7 +494,7 @@ import {
       'reportMainView', 'categoryDrilldownView', 'drilldownBackBtn', 'drilldownTitle', 'trendChart', 'drilldownRecordsList',
       'reclassifyBtn', 'reclassifySheet', 'reclassifyBackdrop', 'reclassifyCloseBtn', 'reclassifyTypeToggle',
       'reclassifySourceSelect', 'reclassifySelectAllRow', 'reclassifySelectAllCheckbox', 'reclassifyCountLabel',
-      'reclassifyPreviewList', 'reclassifyEmptyHint', 'reclassifyApplyBtn'
+      'reclassifyPreviewList', 'reclassifyEmptyHint', 'reclassifyApplyBtn', 'cleanupDuplicateCatsBtn'
     ].forEach(function (id) { els[id] = document.getElementById(id); });
   }
 
@@ -967,6 +995,49 @@ import {
 
       els.categoryEditList.appendChild(item);
     });
+  }
+
+  // ---------- settings: 清理重複分類 ----------
+  // 修好 handleSignedIn 的 id 校正 bug 只能擋「以後」不再新增重複，已經在雲端/本機累積出來的
+  // 重複分類殼（同 type+name、不同 id）需要這個工具一次清掉：同一組裡優先保留有設定圖示的，
+  // 其餘的紀錄併過去、分類殼刪除。跟既有的「刪除分類→挑合併目標」是同一套資料處理邏輯，
+  // 只是這裡自動判斷該併去哪一筆、一次處理所有重複組，不用一組一組手動點。
+  function cleanupDuplicateCategories() {
+    var groups = {};
+    state.categories.forEach(function (c) {
+      var key = c.type + '::' + c.name;
+      (groups[key] = groups[key] || []).push(c);
+    });
+    var dupGroups = Object.keys(groups).map(function (k) { return groups[k]; }).filter(function (g) { return g.length > 1; });
+    if (dupGroups.length === 0) { showToast('沒有偵測到重複分類'); return; }
+
+    var summary = dupGroups.map(function (g) { return g[0].name + '（' + g.length + ' 筆）'; }).join('、');
+    var ok = window.confirm(
+      '偵測到 ' + dupGroups.length + ' 組重複分類：' + summary + '\n\n' +
+      '會自動保留每組裡有設定圖示的那一筆，其餘紀錄會併過去、多出來的分類殼會刪除，不會刪除任何紀錄本身。\n\n' +
+      '確定要合併嗎？'
+    );
+    if (!ok) return;
+
+    var removedIds = {};
+    dupGroups.forEach(function (g) {
+      var keeper = g.slice().sort(function (a, b) {
+        var aIcon = a.icon ? 1 : 0, bIcon = b.icon ? 1 : 0;
+        if (aIcon !== bIcon) return bIcon - aIcon;
+        return (b.keywords ? b.keywords.length : 0) - (a.keywords ? a.keywords.length : 0);
+      })[0];
+      if (g.some(function (c) { return c.fallback; })) keeper.fallback = true;
+      g.forEach(function (c) {
+        if (c === keeper) return;
+        removedIds[c.id] = true;
+        state.records.forEach(function (r) { if (r.categoryId === c.id) r.categoryId = keeper.id; });
+      });
+    });
+    state.categories = state.categories.filter(function (c) { return !removedIds[c.id]; });
+    saveCategories(); saveRecords();
+    renderCategoryEditList();
+    renderAll();
+    showToast('已合併 ' + dupGroups.length + ' 組重複分類');
   }
 
   // ---------- settings: 重新套用關鍵字分類 ----------
@@ -1488,6 +1559,7 @@ import {
       hideToast();
     });
 
+    els.cleanupDuplicateCatsBtn.addEventListener('click', cleanupDuplicateCategories);
     els.reclassifyBtn.addEventListener('click', openReclassifySheet);
     els.reclassifyCloseBtn.addEventListener('click', closeReclassifySheet);
     els.reclassifyBackdrop.addEventListener('click', closeReclassifySheet);
