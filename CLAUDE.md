@@ -2,16 +2,22 @@
 
 給 Claude Code 用的專案導覽。每次在這個目錄啟動時會自動讀取，目標是不用重新探索就能直接開始改東西。
 
+## 目前狀態（2026-08-13）
+
+- 最新版本 **v2.5**，主畫面剛從「單頁堆疊」改成「輸入／日曆／報表」三分頁（見下方「三分頁介面架構」）。
+- 使用者在 v2.4/v2.5 上線後回報「更新的功能有一些問題」但**還沒具體說明是什麼**——下次對話開始時要先問清楚具體症狀，不要假設已知的哪個地方壞了，也不要先入為主去改。
+- `ROADMAP.md` 裡「時間記錄／圓餅圖篩選（現為泡泡+drill-down）／刪除復原／emoji圖示／搜尋」這幾項雖然功能都做完上線了，但**打勾動作要等使用者實際測試確認**才做，使用者已經明確要求先不要自己打勾。
+
 ## 專案說明
 
 個人記帳 PWA。核心體驗：打一行字（例如「早餐 全家 150」）就自動判斷金額、依關鍵字猜分類、記一筆帳；日/週/月報表用圓餅圖看各分類佔比。
 
 **已實作功能：**
-- 頂部日期列（前後一天 + 自訂月曆彈窗）選日期
+- 主畫面分成三個分頁（底部分頁列切換）：**輸入**（日期列 + 一行文字快速記帳，主要記帳方式）、**日曆**（整月格狀日曆，每天格子直接顯示當天淨收支，可點單一天篩選 + 搜尋框 + 紀錄列表）、**報表**（日/週/月圓餅圖 + 圖例，點圖表跳出金額泡泡，點分類列表另開頁面看該分類近 6 個月趨勢圖＋當期逐筆紀錄）
 - 快速輸入自動解析金額 + 關鍵字猜分類，猜錯可即時點色塊改
-- 日 / 週 / 月分頁，圓餅圖 + 圖例（支出/收入分開看）
-- 點紀錄可編輯（改日期/分類/金額/備註/收支類型）或刪除
-- 設定裡可管理分類：改名、改關鍵字、改顏色（16 色可選）、刪除（含預設分類）——刪除時會跳出選單讓你挑紀錄要併入哪個分類（不是固定丟進收容分類），刪的剛好是收容分類時，選中的目標會自動遞補成新的收容分類
+- 點紀錄可編輯（改日期/時間/分類/金額/備註/收支類型）或刪除（刪除是「已刪除+復原」toast，5 秒內可復原，取代原本的 `confirm()`）
+- 分類可設定 emoji 圖示（設定頁分類名稱旁邊的小輸入框），列表/選單顯示分類時都會帶出來
+- 設定裡可管理分類：改名、改圖示、改關鍵字、改顏色（16 色可選）、刪除（含預設分類）——刪除時會跳出選單讓你挑紀錄要併入哪個分類（不是固定丟進收容分類），刪的剛好是收容分類時，選中的目標會自動遞補成新的收容分類
 - CSV 匯出/匯入（單機資料的備份手段），匯入自動偵測並支援兩種格式：本 App 自己的匯出格式，以及 MoneyNote App 匯出的多區段 CSV（`#DAILY_DATAS` + `#CATEGORIES`）
 - PWA：manifest + service worker，可加入手機主畫面
 - **雲端同步（選用，Firebase）**：不登入完全不受影響、行為跟純單機版一樣；登入 Google 帳號後資料會背景同步到 Firestore，其他登入同帳號的裝置也會即時收到更新。見下方「雲端同步架構」。
@@ -44,12 +50,21 @@ VENDOR_RISK.md       Firebase 等第三方服務的風險與退場計畫（政�
 ```
 
 **資料模型：**
-- `budgetapp.records` — `[{id, date:'YYYY-MM-DD', type:'expense'|'income', categoryId, amount, note, createdAt}]`
-- `budgetapp.categories` — `[{id, type, name, colorVar, keywords:[string], fallback:boolean}]`。`fallback` 標記該類型的「收容分類」，刪別的分類時歸不到的紀錄會轉進去；每個 type 永遠恰好有一個 fallback（刪除邏輯會自動遞補，見 `app.js` 的 `.del-cat-btn` handler）。
+- `budgetapp.records` — `[{id, date:'YYYY-MM-DD', type:'expense'|'income', categoryId, amount, note, createdAt}]`。`createdAt` 是完整時間戳（ms），紀錄列表會顯示時間、編輯紀錄可以手動調整（見 `editSaveBtn` handler，把 `editDate`+`editTime` 兩個欄位合併回一個新的 `createdAt`）。
+- `budgetapp.categories` — `[{id, type, name, colorVar, icon:string, keywords:[string], fallback:boolean}]`。`icon` 是選填的 emoji 字串（`catDisplayName(c)` 統一組出「icon + 空格 + name」給各處顯示用，沒設 icon 就只顯示名稱）。`fallback` 標記該類型的「收容分類」，刪別的分類時歸不到的紀錄會轉進去；每個 type 永遠恰好有一個 fallback（刪除邏輯會自動遞補，見 `app.js` 的 `.del-cat-btn` handler）。預設分類清單（`DEFAULT_EXPENSE_CATS`/`DEFAULT_INCOME_CATS`）新增項目時，`loadCategories()` 會用**固定 id**（例如 `cat-subscription-default`）幫既有使用者一次性補上，不是隨機 uid——這樣多台裝置各自補漏也會收斂成同一份文件，不會重複。
 - `budgetapp.theme` — `'light'|'dark'`，不存代表跟隨系統；主題偏好**不同步到雲端**，純本機。
 - localStorage 永遠是畫面即時渲染的來源，不管有沒有登入都一樣；登入雲端同步只是在背景多一層。
 
 **自動分類邏輯**（`parseQuickInput` + `guessCategory`，在 `app.js`）：輸入字串裡最後一個純數字 token 當金額，其餘文字當備註；備註對每個分類的 `keywords` 陣列做 substring 比對（不分大小寫），第一個命中的分類獲勝，都沒命中就用該 type 的 fallback。
+
+## 三分頁介面架構（v2.5，2026-08-13）
+
+主畫面從「單頁堆疊全部功能」改成三個分頁，靠 `state.activeTab`（`'input'|'calendar'|'report'`）+ `switchTab(tab)` 切換顯示/隱藏，底部 `.bottom-tabs` 是固定定位（`position: fixed`）的分頁列。三個分頁對應 `index.html` 裡的 `#tabInput`/`#tabCalendar`/`#tabReport`。
+
+- **輸入分頁**：跟改版前一樣是主要記帳方式——日期列（挑要記到哪一天）+ 一行文字快速輸入卡片。**這個維持不變是使用者明確要求的**，改版時曾經考慮過改成參考圖片裡的點選式輸入，使用者選擇保留文字輸入為主。
+- **日曆分頁**：全新元件，跟原本「date-bar 上那個小的日期選擇 popup」（`calendarPopup`/`calendarGrid`，還留著給輸入分頁用）是兩個獨立的東西，不要搞混。用 `state.calendarTabMonth`（瀏覽哪個月）+ `state.calendarSelectedDay`（有沒有點選單一天）驅動 `renderCalendarTab()`：整月格子（`calendarGridBig`）每格直接顯示當天淨收支金額；下方月總計 + 搜尋框 + 紀錄列表共用 `calendarFilteredRecords()`（沒搜尋時依月份/選中的天篩選，一有搜尋字串就無視月份範圍搜全部紀錄，跟改版前的搜尋語意一致）。
+- **報表分頁**：日/週/月圓餅圖沿用改版前的 `state.period`/`getRange()`，但**互動方式整個換掉**：原本「點圖表整頁篩選成單一分類」的做法（`state.chartFilterCategoryId`）已經拿掉，改成參考使用者提供的截圖（`功能及介面參考資料/`，四張圖，只在使用者電腦本機，沒進 git）——點圓餅圖只跳出一個金額/百分比小泡泡（`toggleChartTooltip()`，`#chartTooltip`，再點同一塊會收起來），圖例列表永遠顯示全部分類，點一列會用 `openCategoryDrilldown(categoryId)` 另開一個子頁面（`#categoryDrilldownView`，蓋掉 `#reportMainView`），裡面是該分類近 6 個月的長條趨勢圖（`buildTrendChart()`，固定抓近 6 個月，跟 `state.period` 選的日/週/月無關）+ 當期（`state.period` 範圍內）該分類的逐筆紀錄。這個 drill-down 頁面等於順便把 ROADMAP 的「月趨勢圖」需求也做掉了，但目前**只在分類 drill-down 情境下看得到**，還沒有一個獨立的「整體月趨勢」視圖。
+- **共用元件**：`buildRecordRow(r)`（單筆紀錄的 DOM）+ `renderGroupedRecordList(container, recs, emptyMsg)`（依日期分組、永遠顯示日期標籤）是日曆分頁跟分類 drill-down 頁共用的渲染邏輯，改任何一筆紀錄的顯示樣式只要改這裡。
 
 ## 雲端同步架構
 
@@ -63,8 +78,9 @@ VENDOR_RISK.md       Firebase 等第三方服務的風險與退場計畫（政�
 ## 風格規範
 
 **顏色系統（CSS 變數，`style.css` 最上方 `:root`）：**
+- `--accent`：介面強調色（金色，呼應主畫面圖示），light `#96650c` / dark `#b8860b`。所有「按鈕、選中狀態、連結文字、focus 外框」等 UI chrome 用這個，**故意跟 `--series-1`（分類識別色的藍）分開**——2026-08-12 之前這些 UI 元件是直接借用 `--series-1`，導致「介面主題色」跟「餐飲分類的顏色」綁死在一起，改分類顏色會意外動到介面主題色，反之亦然。之後要調整介面強調色只改這一個變數，不要碰 `--series-*`。
 - `--series-1` ~ `--series-8`：分類識別色，8 色一組，light/dark 主題各有對應值（來自驗證過 CVD 安全性的色階）。目前是分類自動配色（`nextColorVar`）跟圖表預設用色的來源，**不要**隨意改變這 8 個的色相順序或增減數量。
-- `--pastel-1` ~ `--pastel-8`：使用者手動選色的「淺色」選項，均勻分布在整個色相環（每 45° 一色），**跨主題固定不變**（不放進 dark mode 區塊），因為本來就是要淺、要跟深色系分開一組。
+- `--pastel-1` ~ `--pastel-8`：使用者手動選色的「淺色」選項，均勻分布在整個色相環（每 45° 一色），**跨主題固定不變**（不放進 dark mode 區塊），因為本來就是要淺、要跟深色系分開一組。目前也被「訂閱費」這個預設分類拿來當固定顏色用（`--pastel-6`），因為 8 個 `--series-*` 都已經被其他預設分類佔滿了。
 - `--expense-color` / `--income-color`：金額正負號用色，跟分類識別色是分開的語意（別混用）。
 
 **主題：** `prefers-color-scheme` 自動 + `data-theme` 手動覆寫雙軌並存（右上角圖示切換），兩邊都要顧到，改 CSS 變數時記得三處都要改（`:root` 內的 `@media dark` 區塊 + `:root[data-theme="dark"]` 區塊）。
@@ -115,3 +131,7 @@ cd "C:\Users\user\OneDrive\桌面\10-19_System_Automation\15 App Projects\budget
 - **這個測試環境的瀏覽器 pane 對「module script 靜態 import 跨網域 URL」的處理有問題**：`<script type="module" src="app.js">` 頁面載入時，若 `app.js`（或它 import 的檔案）用**靜態** `import ... from 'https://...'` 直接 import gstatic.com 的網址，會出現 `ERR_NAME_NOT_RESOLVED`；但同一個網址用 `fetch()`、`javascript_tool` 主控台打的 `import()`、或直接瀏覽器網址列導航，全部都正常。目前解法是 `firebase-config.js` 內部一律用**動態** `import()`（`await import(url)`）載入 Firebase SDK，`app.js` 只對同源的 `firebase-config.js` 做靜態 import——這是標準 ES 語法，在真實瀏覽器（含 iOS Safari）行為完全一樣，不是 workaround 出來的偏門寫法，之後要加其他 CDN 依賴時延用同一個模式（動態 import、集中包在一個同源檔案裡）比較不會踩到這個 pane 的限制。
 - **雲端功能的驗證方式分兩軌**：(1) 同步演算法/安全規則（`diffAndPush`、`firestore.rules`、搬遷時序）是用獨立的 Node.js 腳本，透過 npm 版 `firebase` SDK 直接打 emulator 測的，不依賴瀏覽器 pane，可以完整測到 CVD-safe 那種等級的正確性驗證；(2) DOM/UI 那端（登入畫面顯示切換、按鈕綁定、既有功能沒有因為改成 module 而壞掉）是把 `firebase-config.js` 暫時換成一個純本機假實作（no-op 版）測的，測完要記得換回真正的 `firebase-config.js`。目前沒辦法在這個瀏覽器 pane 裡做「真正串 emulator + 真的 Google 登入」的全端到端測試，這步只能請使用者在自己的真實瀏覽器上做。
 - **搬遷/同步邏輯的測試腳本**：位於系統暫存的 scratchpad（session 專屬、不在專案 repo 裡），如果之後要改 `diffAndPush`/`handleSignedIn`/`firestore.rules`，建議重新寫一版類似的 Node 測試腳本（連 emulator、建假帳號、驗證 diff 寫入筆數、驗證 rules 擋掉跨帳號存取、驗證搬遷時序不會讓 listener 看到過渡態的空集合），不要只靠肉眼看程式碼，這塊風險太高值得跑一次真的測試。
+- **登入後本機異動會被雲端快照覆蓋（2026-08-13 修正）**：`handleSignedIn()` 原本只在「雲端全空+本機有資料」才做搬遷 push，其他情況（雲端本來就有資料，例如重新登入）直接跳去 `startCloudListeners()`——這代表「登出狀態下在本機做的修改（例如剛設定的分類 emoji）」從沒機會推上雲端，登入後第一份雲端快照直接把這些本機異動蓋掉。修法：一般登入（非首次搬遷）也要先做一次 push，但只做「新增/覆寫」不做「刪除」（用 `pushLocalOnly()`，不是共用的 `diffAndPush()`）——因為這個時間點沒辦法區分「本機真的刪除了」還是「這筆是別的裝置已經同步上去、這台裝置還沒同步過」，誤刪風險太高，所以刪除只交給後續 listener 自然同步回來。
+- **Emoji 圖示挑選要考慮跨平台一致性**：分類 emoji（`DEFAULT_EXPENSE_CATS`/`DEFAULT_INCOME_CATS` 的 `icon` 欄位）曾經用過 🛍️（購物袋），實測在部分系統顯示不穩定，已換成 🛒（購物車）。之後要加新的預設 emoji，優先選 Unicode 6.0 左右、單一 codepoint、沒有 ZWJ 組合序列的常見 emoji，避免挑太新或需要 variation selector 的。
+- **`navigator.vibrate()` 只是加分，不是必要**：刪除紀錄時會呼叫震動 API 加回饋感（`deleteRecordWithUndo()`），iOS Safari（含加到主畫面的 PWA 模式）完全沒實作這個 API，呼叫了沒有任何反應也不會報錯，是平台限制不是 bug，不用特別處理或提示使用者。
+- **`功能及介面參考資料/` 資料夾**：使用者提供的介面設計參考截圖（記帳app 的輸入/日曆/回報介面 4 張圖），只存在使用者本機，**沒有加進 git**（都是 binary 圖片，非原始碼）。v2.5 的三分頁改版就是照這幾張圖設計的，之後如果使用者又丟新的參考圖進這個資料夾，要記得去看一下裡面有什麼，但不要自作主張把這個資料夾加進版本控制。
