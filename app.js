@@ -3,6 +3,12 @@ import {
   signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
   collection, doc, onSnapshot, writeBatch, getDocs
 } from './firebase-config.js';
+import {
+  WEEKDAY, uid, debounce, pad2, toKey, fromKey, addDays, addMonths, addYears,
+  startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear,
+  isSameDay, formatMoney, shortDate, formatTime, escapeHtml
+} from './utils.js';
+import { stageImportCsv } from './csv.js';
 
 (function () {
   'use strict';
@@ -10,8 +16,20 @@ import {
   var SVG_NS = 'http://www.w3.org/2000/svg';
   // 給家人/自己看的白話版更新紀錄，完整技術細節在 CLAUDE.md。新增版本時陣列開頭插入一筆，
   // CURRENT_VERSION 記得跟著更新（設定頁的版本號、標籤都是抓這個常數）。
-  var CURRENT_VERSION = 'v2.7';
+  var CURRENT_VERSION = 'v2.8';
   var CHANGELOG = [
+    { version: 'v2.8', name: '資料安全與可靠性強化', date: '2026-08-14', notes: [
+      '清除所有資料時，雲端刪除失敗會保留本機資料並跳出錯誤提示，不會清一半',
+      '大量資料的雲端同步（例如換新裝置搬遷）改成自動分批，不會因為筆數太多整批失敗',
+      '修正快速連續操作時，雲端同步可能互相覆蓋、舊資料蓋掉新資料的問題',
+      'CSV 匯入改成「先預覽再確認」，會列出有效筆數、新增分類數、略過原因',
+      '修正 CSV 匯入偶爾會把備註裡的換行內容弄壞的問題',
+      'CSV 匯出加強安全性，避免內容被試算表誤判成公式執行',
+      '修正 App 更新後，加到主畫面的版本有時候會一直吃到舊版快取的問題',
+      '搜尋紀錄加上防抖動，資料量大時輸入更順暢，並支援「減少動態效果」系統設定',
+      '彈出視窗補上鍵盤與螢幕報讀器的操作支援',
+      'App 圖示配色改成跟主畫面一致的金色主題'
+    ] },
     { version: 'v2.7', name: '開場載入畫面、日曆格線、報表月份篩選、搜尋進階條件', date: '2026-08-13', notes: [
       'App 開啟時新增載入畫面，確認是最新版本才會進入',
       '日曆分頁的月曆格子加上格線設計，區隔每一天',
@@ -80,7 +98,6 @@ import {
     categories: 'budgetapp.categories',
     theme: 'budgetapp.theme'
   };
-  var WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
   var SERIES_SLOTS = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6', '--series-7', '--series-8'];
   var PASTEL_SLOTS = ['--pastel-1', '--pastel-2', '--pastel-3', '--pastel-4', '--pastel-5', '--pastel-6', '--pastel-7', '--pastel-8'];
 
@@ -101,50 +118,6 @@ import {
     { name: '投資', colorVar: '--series-3', icon: '📈', keywords: ['股息', '配息', '利息', '投資', '股票'] },
     { name: '其他收入', colorVar: '--series-4', icon: '💵', keywords: [], fallback: true }
   ];
-
-  // MoneyNote 匯出檔的分類名稱 -> 對應本 App 既有分類（真的是同一件事才合併，不是同一件事的一律保留原名各自成類）
-  var MONEYNOTE_MERGE_MAP = {
-    expense: {
-      '飲食費': '餐飲', '交通費': '交通', '日用品': '購物', '衣服': '購物', '美容': '購物',
-      '醫療費': '醫療', '教育費': '教育',
-      '水電費': '居家', '電話費': '居家', '房費': '居家', '家庭開銷': '居家',
-      '娛樂費': '娛樂', '訂閱類娛樂費': '娛樂', '旅遊費': '娛樂'
-    },
-    income: {
-      '工資': '薪資', '零花錢': '其他收入', '副業': '其他收入', '臨時收入': '其他收入'
-    }
-  };
-  // 沒有對應既有分類、會新建成獨立分類的項目，先給合理的關鍵字，別讓它空著
-  var MONEYNOTE_NEW_CATEGORY_KEYWORDS = {
-    '交際費': ['交際', '應酬', '聚餐', '禮金', '紅包', '送禮'],
-    '煙酒': ['煙', '菸', '香菸', '酒', '啤酒', '紅酒', '威士忌', '檳榔']
-  };
-
-  // ---------- utils ----------
-  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-  function pad2(n) { return String(n).padStart(2, '0'); }
-  function toKey(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
-  function fromKey(key) { var p = key.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); }
-  function addDays(d, n) { var r = new Date(d); r.setDate(r.getDate() + n); return r; }
-  function addMonths(d, n) { var r = new Date(d); r.setMonth(r.getMonth() + n); return r; }
-  function startOfWeek(d) { var r = new Date(d); r.setDate(r.getDate() - r.getDay()); r.setHours(0, 0, 0, 0); return r; }
-  function endOfWeek(d) { return addDays(startOfWeek(d), 6); }
-  function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
-  function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
-  function startOfYear(d) { return new Date(d.getFullYear(), 0, 1); }
-  function endOfYear(d) { return new Date(d.getFullYear(), 11, 31); }
-  function addYears(d, n) { var r = new Date(d); r.setFullYear(r.getFullYear() + n); return r; }
-  function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
-  function formatMoney(n) {
-    var sign = n < 0 ? '-' : '';
-    return sign + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
-  }
-  function shortDate(d) { return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()); }
-  function formatTime(ms) {
-    if (!ms) return '';
-    var d = new Date(ms);
-    return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-  }
 
   // ---------- state ----------
   var state = {
@@ -820,11 +793,6 @@ import {
   }
 
   // ---------- render: records list ----------
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
   function catDisplayName(c) {
     if (!c) return '（已刪除分類）';
     return (c.icon ? c.icon + ' ' : '') + c.name;
@@ -1323,153 +1291,6 @@ import {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
-  // 完整支援 RFC4180 風格的 CSV 剖析：一次讀整份文字、逐字元判斷，正確處理引號內的逗號、
-  // 換行（\n、\r\n、單獨 \r 都算）跟雙引號跳脫（""）。之前是先用 split(/\r?\n/) 把整份文字
-  // 硬切成一行一行，再逐行剖析——這樣引號包住的欄位裡如果有換行（我們自己 exportCsv 就會
-  // 產生這種欄位），會在切行那一步就被切斷，等於把自己匯出的 CSV 匯回來會壞掉。
-  function parseCsvText(text) {
-    var rows = [], row = [], field = '', inQuotes = false;
-    var i = 0, len = text.length;
-    while (i < len) {
-      var ch = text[i];
-      if (inQuotes) {
-        if (ch === '"') {
-          if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
-          inQuotes = false; i++; continue;
-        }
-        field += ch; i++; continue;
-      }
-      if (ch === '"') { inQuotes = true; i++; continue; }
-      if (ch === ',') { row.push(field); field = ''; i++; continue; }
-      if (ch === '\r') {
-        if (text[i + 1] === '\n') { i++; continue; }
-        row.push(field); rows.push(row); row = []; field = ''; i++; continue;
-      }
-      if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
-      field += ch; i++;
-    }
-    if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
-    return rows;
-  }
-  function isBlankRow(row) { return row.length === 0 || (row.length === 1 && row[0].trim() === ''); }
-
-  // 分類建立要在「暫存的一份分類清單」上做，不能直接動 state.categories——匯入還在預覽階段，
-  // 使用者按下確認之前不該真的改動到現有資料。
-  function nextColorVarIn(categoriesArr, type) {
-    var count = categoriesArr.filter(function (c) { return c.type === type; }).length;
-    return '--series-' + ((count % 8) + 1);
-  }
-  function findOrCreateCategoryByNameIn(categoriesArr, type, name, keywordsIfCreated) {
-    var cat = categoriesArr.find(function (c) { return c.type === type && c.name === name; });
-    if (!cat) {
-      cat = { id: uid(), type: type, name: name || (type === 'expense' ? '其他' : '其他收入'), colorVar: nextColorVarIn(categoriesArr, type), icon: '', keywords: keywordsIfCreated ? keywordsIfCreated.slice() : [], fallback: false };
-      categoriesArr.push(cat);
-    }
-    return cat;
-  }
-  // 光驗證格式還不夠——「2026-02-30」格式合法但日期本身不存在，JS 的 Date 建構子遇到這種
-  // 情況會自動往後推（變成 3/2），不會報錯，所以要自己拿建出來的年月日回頭比對有沒有跑掉。
-  function normalizeImportDate(str) {
-    str = (str || '').trim();
-    var y, mo, d;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-      var p = str.split('-').map(Number); y = p[0]; mo = p[1]; d = p[2];
-    } else {
-      var m = str.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-      if (!m) return null;
-      y = Number(m[1]); mo = Number(m[2]); d = Number(m[3]);
-    }
-    var dateObj = new Date(y, mo - 1, d);
-    if (dateObj.getFullYear() !== y || dateObj.getMonth() !== mo - 1 || dateObj.getDate() !== d) return null;
-    return y + '-' + pad2(mo) + '-' + pad2(d);
-  }
-  // 金額除了不能是 NaN（例如 parseFloat("123abc") 會吃成 123 這種「看起來像數字」的髒資料
-  // 頂多防到格式層級，isFinite 這裡主要擋 Infinity/-Infinity），也不接受負數——這個 App 的
-  // 紀錄一律是非負金額 + type 欄位分支出/收入，負數金額不符合資料模型。
-  function isValidImportAmount(n) { return isFinite(n) && n >= 0; }
-
-  function stageOwnFormatCsv(rows, workingCategories) {
-    var recordsToAdd = [], errorSamples = [], errorCount = 0;
-    for (var i = 1; i < rows.length; i++) {
-      var cols = rows[i];
-      if (isBlankRow(cols)) continue;
-      var date = normalizeImportDate(cols[0]);
-      var type = cols[1], catName = cols[2], amount = parseFloat(cols[3]), note = cols[4] || '';
-      var reason = !date ? '日期無效' : (type !== 'expense' && type !== 'income') ? '收支類型無效' : !isValidImportAmount(amount) ? '金額無效' : null;
-      if (reason) {
-        errorCount++;
-        if (errorSamples.length < 5) errorSamples.push('第 ' + (i + 1) + ' 列：' + reason);
-        continue;
-      }
-      var cat = findOrCreateCategoryByNameIn(workingCategories, type, catName);
-      recordsToAdd.push({ id: uid(), date: date, type: type, categoryId: cat.id, amount: amount, note: note, createdAt: Date.now() });
-    }
-    return { recordsToAdd: recordsToAdd, errorCount: errorCount, errorSamples: errorSamples };
-  }
-  // "MoneyNote" app export: multiple #SECTION blocks in one file. We only need
-  // #DAILY_DATAS (the transactions) and #CATEGORIES (numeric categoryId -> name/type).
-  function stageMoneyNoteCsv(rows, workingCategories) {
-    var dailyStart = -1, catStart = -1;
-    rows.forEach(function (row, idx) {
-      if (row.length === 1 && row[0].trim() === '#DAILY_DATAS') dailyStart = idx;
-      else if (row.length === 1 && row[0].trim() === '#CATEGORIES') catStart = idx;
-    });
-    var categoryMap = {};
-    if (catStart >= 0) {
-      for (var j = catStart + 2; j < rows.length; j++) {
-        var crow = rows[j];
-        if (isBlankRow(crow) || (crow[0] || '').trim().charAt(0) === '#') break;
-        if (!crow[0]) continue;
-        categoryMap[crow[0]] = { name: crow[1], type: crow[4] === '1' ? 'income' : 'expense' };
-      }
-    }
-    var recordsToAdd = [], errorSamples = [], errorCount = 0;
-    if (dailyStart >= 0) {
-      for (var k = dailyStart + 2; k < rows.length; k++) {
-        var drow = rows[k];
-        if (isBlankRow(drow) || (drow[0] || '').trim().charAt(0) === '#') break;
-        var date = normalizeImportDate(drow[0]);
-        var amount = parseFloat(drow[1]);
-        var typeCode = drow[4];
-        var reason = !date ? '日期無效' : !isValidImportAmount(amount) ? '金額無效' : (typeCode !== '0' && typeCode !== '1') ? '收支類型無效' : null;
-        if (reason) {
-          errorCount++;
-          if (errorSamples.length < 5) errorSamples.push('第 ' + (k + 1) + ' 列：' + reason);
-          continue;
-        }
-        var type = typeCode === '1' ? 'income' : 'expense';
-        var info = categoryMap[drow[3]];
-        var rawName = info ? info.name : null;
-        var mergedName = rawName && MONEYNOTE_MERGE_MAP[type][rawName];
-        var cat = findOrCreateCategoryByNameIn(workingCategories, type, mergedName || rawName, MONEYNOTE_NEW_CATEGORY_KEYWORDS[rawName]);
-        var createdAtMs = Date.parse(drow[5]);
-        recordsToAdd.push({
-          id: uid(), date: date, type: type, categoryId: cat.id, amount: amount,
-          note: (drow[2] || '').replace(/\\n/g, ' ').trim(),
-          createdAt: isNaN(createdAtMs) ? Date.now() : createdAtMs
-        });
-      }
-    }
-    return { recordsToAdd: recordsToAdd, errorCount: errorCount, errorSamples: errorSamples };
-  }
-  // 匯入改成「解析 → 驗證 → 預覽 → 使用者確認 → 套用」，不再邊解析邊直接寫進 state：
-  // stageImportCsv 只負責算出「如果匯入的話會變成怎樣」，完全不動真正的 state，
-  // 使用者在預覽畫面按下確認後才由 applyImportStaged 真的套用。
-  function stageImportCsv(text) {
-    var normalized = text.replace(/^﻿/, '');
-    var rows = parseCsvText(normalized);
-    var isMoneyNote = rows.some(function (r) { return r.length === 1 && r[0].trim() === '#DAILY_DATAS'; });
-    var workingCategories = state.categories.map(function (c) { return Object.assign({}, c, { keywords: c.keywords.slice() }); });
-    var staged = isMoneyNote ? stageMoneyNoteCsv(rows, workingCategories) : stageOwnFormatCsv(rows, workingCategories);
-    return {
-      format: isMoneyNote ? 'moneynote' : 'own',
-      recordsToAdd: staged.recordsToAdd,
-      workingCategories: workingCategories,
-      newCategoryCount: workingCategories.length - state.categories.length,
-      errorCount: staged.errorCount,
-      errorSamples: staged.errorSamples
-    };
-  }
   function applyImportStaged(staged) {
     state.categories = staged.workingCategories;
     state.records = state.records.concat(staged.recordsToAdd);
@@ -1616,10 +1437,14 @@ import {
       });
     });
 
+    // 搜尋框跟金額篩選都是每打一個字就觸發，紀錄多了之後每次都整個重新掃描+重繪列表會卡，
+    // 加個短暫的 debounce：state 本身還是每個字都同步更新（畫面上的輸入框本來就是瀏覽器
+    // 自己即時顯示，不需要等），只有比較貴的重繪動作延後到打字停下來一小段時間才真的執行。
+    var debouncedRenderCalendarTab = debounce(function () { renderCalendarTab(); }, 150);
     ['input', 'search'].forEach(function (evt) {
       els.recordsSearchInput.addEventListener(evt, function () {
         state.searchQuery = els.recordsSearchInput.value;
-        renderCalendarTab();
+        debouncedRenderCalendarTab();
       });
     });
     els.searchAdvToggle.addEventListener('click', function () {
@@ -1629,7 +1454,7 @@ import {
       input.addEventListener('input', function () {
         var v = input.value.trim();
         state.searchFilters[key] = v === '' ? null : parseFloat(v);
-        renderCalendarTab();
+        debouncedRenderCalendarTab();
       });
     }
     bindAmountFilterInput(els.searchAmountMin, 'amountMin');
@@ -1761,7 +1586,7 @@ import {
       if (!file) return;
       var reader = new FileReader();
       reader.onload = function () {
-        openImportPreview(stageImportCsv(String(reader.result)));
+        openImportPreview(stageImportCsv(String(reader.result), state.categories));
         els.importFileInput.value = '';
       };
       reader.readAsText(file, 'UTF-8');
@@ -1877,6 +1702,62 @@ import {
     els.reclassifyApplyBtn.addEventListener('click', applyReclassify);
   }
 
+  // ---------- sheet 無障礙：dialog 語意、開關時處理焦點、focus trap、Escape 關閉 ----------
+  // App 裡有七八個底部彈出的 sheet（設定、編輯紀錄、分類挑選、匯入預覽……），各自的開關
+  // 邏輯散在很多地方（有的用專屬 open/close 函式、有的在 click handler 裡直接
+  // classList.add/remove('hidden')）。與其每個 sheet 各自補一套 focus trap，這裡用
+  // MutationObserver 統一在「.hidden 這個 class 被加上/拿掉」的當下處理，不用去改動任何
+  // 既有的開關呼叫點，新增 sheet 時也不用特別記得要加無障礙邏輯。
+  function setupSheetAccessibility() {
+    var lastFocusedBeforeOpen = null;
+    function focusableEls(container) {
+      return Array.prototype.slice.call(
+        container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      ).filter(function (el) { return !el.disabled && el.offsetParent !== null; });
+    }
+    function onSheetOpen(sheetEl) {
+      lastFocusedBeforeOpen = document.activeElement;
+      var body = sheetEl.querySelector('.sheet-body');
+      if (body && !body.hasAttribute('tabindex')) body.setAttribute('tabindex', '-1');
+      var targets = body ? focusableEls(body) : [];
+      (targets[0] || body || sheetEl).focus();
+    }
+    function onSheetClose() {
+      if (lastFocusedBeforeOpen && document.body.contains(lastFocusedBeforeOpen)) lastFocusedBeforeOpen.focus();
+      lastFocusedBeforeOpen = null;
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('.sheet'), function (sheetEl) {
+      sheetEl.setAttribute('role', 'dialog');
+      sheetEl.setAttribute('aria-modal', 'true');
+      var wasHidden = sheetEl.classList.contains('hidden');
+      new MutationObserver(function () {
+        var isHidden = sheetEl.classList.contains('hidden');
+        if (wasHidden && !isHidden) onSheetOpen(sheetEl);
+        else if (!wasHidden && isHidden) onSheetClose();
+        wasHidden = isHidden;
+      }).observe(sheetEl, { attributes: true, attributeFilter: ['class'] });
+    });
+    document.addEventListener('keydown', function (e) {
+      var openSheetEl = document.querySelector('.sheet:not(.hidden)');
+      if (!openSheetEl) return;
+      if (e.key === 'Escape') {
+        // 每個 sheet 都已經有 .sheet-backdrop 掛著點擊關閉的邏輯，直接模擬點一下，
+        // 不用另外去猜每個 sheet 的關閉按鈕 id 叫什麼。
+        var backdrop = openSheetEl.querySelector('.sheet-backdrop');
+        if (backdrop) backdrop.click();
+        return;
+      }
+      if (e.key === 'Tab') {
+        var body = openSheetEl.querySelector('.sheet-body') || openSheetEl;
+        var f = focusableEls(body);
+        if (f.length === 0) return;
+        var first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    });
+  }
+
   // ---------- init ----------
   function init() {
     cacheEls();
@@ -1886,13 +1767,18 @@ import {
     state.records = loadRecords();
     renderManualCategoryGrid();
     bindEvents();
+    setupSheetAccessibility();
     switchTab('input');
     renderAll();
     renderChangelog();
     initCloudSync();
 
-    // 開場的載入畫面：等 service worker 註冊/檢查更新完成才收起，讓使用者確定進來的是最新版本，
-    // 不是還沒套用更新的舊快取。網路不通或檢查卡住時，2.5 秒逾時還是要放行，不能卡死使用者進不去。
+    // 開場的載入畫面：等 service worker 檢查更新的動作做過一輪才收起。老實說 reg.update()
+    // 完成只代表「檢查過 sw.js 有沒有變」，不代表這次載入的頁面內容就一定是新版——真正的
+    // service worker 生效時機是新的 worker 真的接管這個分頁（觸發 controllerchange），這件事
+    // 可能發生在 reg.update() 之後。所以這裡分兩層：載入畫面本身只是「檢查過一輪、不要一直
+    // 卡著」，真的偵測到版本切換時另外強制重新整理一次，才能保證畫面上執行的 HTML/JS 也真的
+    // 換成新版，不是自己騙自己。網路不通或檢查卡住時 2.5 秒逾時還是要放行，不能卡死使用者。
     var loadingHidden = false;
     function hideAppLoading() {
       if (loadingHidden) return;
@@ -1903,6 +1789,16 @@ import {
       setTimeout(function () { el.remove(); }, 300);
     }
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+      // 這個分頁「載入當下」本來就已經被某個 service worker 控制著、後來又換成另一個，
+      // 才代表是真的版本切換，需要重新整理一次才能保證這次抓到的頁面內容也是新版。
+      // 如果原本沒有 controller（第一次啟用 service worker），不算更新，不用重整。
+      var hadControllerAtLoad = !!navigator.serviceWorker.controller;
+      var reloadedForUpdate = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (!hadControllerAtLoad || reloadedForUpdate) return;
+        reloadedForUpdate = true;
+        location.reload();
+      });
       navigator.serviceWorker.register('sw.js').then(function (reg) {
         return reg.update().catch(function () {});
       }).catch(function () {}).then(hideAppLoading);

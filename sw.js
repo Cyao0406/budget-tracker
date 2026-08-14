@@ -1,9 +1,11 @@
-var CACHE_NAME = 'budget-app-v5';
+var CACHE_NAME = 'budget-app-v6';
 var ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './utils.js',
+  './csv.js',
   './firebase-config.js',
   './manifest.json',
   './icons/icon-192.png',
