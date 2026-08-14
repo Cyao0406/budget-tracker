@@ -385,6 +385,23 @@
     </div>
   </div>
 
+  <!-- CSV import preview: 解析完先給使用者看摘要，確認才真的套用 -->
+  <div class="sheet hidden" id="importPreviewSheet">
+    <div class="sheet-backdrop" id="importPreviewBackdrop"></div>
+    <div class="sheet-body">
+      <div class="sheet-header">
+        <h2>匯入預覽</h2>
+        <button type="button" class="icon-btn" id="importPreviewCloseBtn" aria-label="關閉">✕</button>
+      </div>
+      <div id="importPreviewSummary" class="import-preview-summary"></div>
+      <ul id="importPreviewErrors" class="import-preview-errors hidden"></ul>
+      <div class="edit-actions">
+        <button type="button" class="text-btn danger" id="importPreviewCancelBtn">取消</button>
+        <button type="button" class="save-btn" id="importPreviewConfirmBtn">確認匯入</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Changelog / what's new -->
   <div class="sheet hidden" id="changelogSheet">
     <div class="sheet-backdrop" id="changelogBackdrop"></div>
