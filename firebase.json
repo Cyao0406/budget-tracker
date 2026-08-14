@@ -13,6 +13,9 @@
       "**/.*",
       "*.md",
       "*.log",
+      "package.json",
+      "package-lock.json",
+      "test/**",
       "**/node_modules/**"
     ]
   },
