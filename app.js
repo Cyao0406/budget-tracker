@@ -531,7 +531,9 @@ import { stageImportCsv } from './csv.js';
       'categoryPickSheet', 'categoryPickBackdrop', 'categoryPickGrid', 'categoryPickClose',
       'recordsList', 'recordsSearchInput',
       'searchAdvToggle', 'searchAdvPanel', 'searchAmountMin', 'searchAmountMax', 'searchDateFrom', 'searchDateTo', 'searchAdvClearBtn',
-      'exportBtn', 'settingsSheet', 'settingsBackdrop', 'settingsCloseBtn', 'categoryEditList',
+      'exportBtn', 'settingsSheet', 'settingsBackdrop', 'settingsCloseBtn',
+      'categorySettingsBtn', 'categorySettingsSheet', 'categorySettingsBackdrop', 'categorySettingsCloseBtn',
+      'categoryEditList',
       'addCategoryBtn', 'settingsExportBtn', 'importFileInput', 'resetDataBtn', 'toast', 'toastMsg', 'toastUndoBtn',
       'editRecordSheet', 'editRecordBackdrop', 'editRecordCloseBtn', 'editDate', 'editTime', 'editCategory',
       'editAmount', 'editNote', 'editDeleteBtn', 'editSaveBtn',
@@ -1640,15 +1642,24 @@ import { stageImportCsv } from './csv.js';
     });
 
     els.settingsBtn.addEventListener('click', function () {
+      els.settingsSheet.classList.remove('hidden');
+    });
+    els.settingsCloseBtn.addEventListener('click', function () { els.settingsSheet.classList.add('hidden'); });
+    els.settingsBackdrop.addEventListener('click', function () { els.settingsSheet.classList.add('hidden'); });
+
+    // 分類與關鍵字設定拆成獨立子頁面，從主設定頁點進來，保持主設定頁乾淨、不用一打開就看到
+    // 一長串分類列表。開啟時才做分類清單的初始化跟渲染，跟其他子 sheet（重新套用關鍵字分類等）
+    // 「開啟時才 render」的模式一致。
+    els.categorySettingsBtn.addEventListener('click', function () {
       state.editingCategoryContext = state.addType;
       Array.prototype.forEach.call(document.querySelectorAll('.type-toggle-btn[data-settype]'), function (b) {
         b.classList.toggle('active', b.dataset.settype === state.editingCategoryContext);
       });
       renderCategoryEditList();
-      els.settingsSheet.classList.remove('hidden');
+      els.categorySettingsSheet.classList.remove('hidden');
     });
-    els.settingsCloseBtn.addEventListener('click', function () { els.settingsSheet.classList.add('hidden'); });
-    els.settingsBackdrop.addEventListener('click', function () { els.settingsSheet.classList.add('hidden'); });
+    els.categorySettingsCloseBtn.addEventListener('click', function () { els.categorySettingsSheet.classList.add('hidden'); });
+    els.categorySettingsBackdrop.addEventListener('click', function () { els.categorySettingsSheet.classList.add('hidden'); });
 
     els.changelogBtn.addEventListener('click', function () { els.changelogSheet.classList.remove('hidden'); });
     els.changelogBackdrop.addEventListener('click', function () { els.changelogSheet.classList.add('hidden'); });
@@ -1738,7 +1749,12 @@ import { stageImportCsv } from './csv.js';
       }).observe(sheetEl, { attributes: true, attributeFilter: ['class'] });
     });
     document.addEventListener('keydown', function (e) {
-      var openSheetEl = document.querySelector('.sheet:not(.hidden)');
+      // 有些 sheet 是疊在另一個 sheet 上面開的（例如分類與關鍵字設定疊在主設定上面），
+      // 這時候畫面上不只一個 .sheet 沒有 .hidden。DOM 順序等於疊層順序（後面的蓋在上面，
+      // 跟這次 session 稍早修過的 z-index 疊層 bug 是同一個約定），所以要挑「最後一個」
+      // 符合的，不能用 querySelector 只抓第一個，不然 Escape/Tab 會作用在背景那層。
+      var openSheets = document.querySelectorAll('.sheet:not(.hidden)');
+      var openSheetEl = openSheets.length ? openSheets[openSheets.length - 1] : null;
       if (!openSheetEl) return;
       if (e.key === 'Escape') {
         // 每個 sheet 都已經有 .sheet-backdrop 掛著點擊關閉的邏輯，直接模擬點一下，

@@ -309,20 +309,14 @@
     <div class="sheet-backdrop" id="settingsBackdrop"></div>
     <div class="sheet-body sheet-body-lg">
       <div class="sheet-header">
-        <h2>分類與關鍵字設定</h2>
+        <h2>設定</h2>
         <button type="button" class="icon-btn" id="settingsCloseBtn" aria-label="關閉設定">✕</button>
       </div>
 
-      <div class="settings-type-toggle" role="tablist">
-        <button type="button" class="type-toggle-btn expense active" data-settype="expense" role="tab" aria-selected="true">支出分類</button>
-        <button type="button" class="type-toggle-btn income" data-settype="income" role="tab" aria-selected="false">收入分類</button>
-      </div>
-
-      <div id="categoryEditList" class="category-edit-list"></div>
-
-      <button type="button" class="add-category-btn" id="addCategoryBtn">+ 新增分類</button>
-      <button type="button" class="text-btn" id="reclassifyBtn">重新套用關鍵字分類</button>
-      <button type="button" class="text-btn" id="cleanupDuplicateCatsBtn">清理重複分類（同名分類自動合併）</button>
+      <button type="button" class="settings-menu-item" id="categorySettingsBtn">
+        <span>分類與關鍵字設定</span>
+        <span class="settings-menu-chevron">›</span>
+      </button>
 
       <hr class="divider">
       <div class="cloud-sync-section">
@@ -352,6 +346,28 @@
         <span>版本 <span id="currentVersionTag"></span></span>
         <span class="version-btn-cta">最近更新了什麼 ›</span>
       </button>
+    </div>
+  </div>
+
+  <!-- 分類與關鍵字設定：從主設定頁點進來的獨立子頁面，讓主設定頁保持乾淨 -->
+  <div class="sheet hidden" id="categorySettingsSheet">
+    <div class="sheet-backdrop" id="categorySettingsBackdrop"></div>
+    <div class="sheet-body sheet-body-lg">
+      <div class="sheet-header">
+        <h2>分類與關鍵字設定</h2>
+        <button type="button" class="icon-btn" id="categorySettingsCloseBtn" aria-label="關閉">✕</button>
+      </div>
+
+      <div class="settings-type-toggle" role="tablist">
+        <button type="button" class="type-toggle-btn expense active" data-settype="expense" role="tab" aria-selected="true">支出分類</button>
+        <button type="button" class="type-toggle-btn income" data-settype="income" role="tab" aria-selected="false">收入分類</button>
+      </div>
+
+      <div id="categoryEditList" class="category-edit-list"></div>
+
+      <button type="button" class="add-category-btn" id="addCategoryBtn">+ 新增分類</button>
+      <button type="button" class="text-btn" id="reclassifyBtn">重新套用關鍵字分類</button>
+      <button type="button" class="text-btn" id="cleanupDuplicateCatsBtn">清理重複分類（同名分類自動合併）</button>
     </div>
   </div>
 
