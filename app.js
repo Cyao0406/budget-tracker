@@ -222,6 +222,29 @@ import {
 
   function cloudCollection(name) { return collection(db, 'users', cloudUser.uid, name); }
 
+  // Firestore 一個 writeBatch 最多 500 個操作，超過會整批直接失敗。記帳資料用久了很容易破
+  // 500 筆（尤其是第一次搬遷、或本機離線很久才重新連上要把差異一次補齊的時候），所以寫入
+  // 一律先拆成陣列、每 CHUNK_SIZE 筆一批，依序（不是平行）送出——依序送出是故意的：平行送出
+  // 等於好幾個 batch 同時在跑，一旦某批失敗，不容易判斷實際上寫到雲端的確切狀態在哪；依序送出
+  // 至少能保證「失敗那批之前的都已經確定成功」，狀態單純很多。
+  var BATCH_CHUNK_SIZE = 450;
+  function commitWritesInChunks(name, writes) {
+    if (writes.length === 0) return Promise.resolve();
+    var chunks = [];
+    for (var i = 0; i < writes.length; i += BATCH_CHUNK_SIZE) chunks.push(writes.slice(i, i + BATCH_CHUNK_SIZE));
+    var chain = Promise.resolve();
+    chunks.forEach(function (chunk) {
+      chain = chain.then(function () {
+        var batch = writeBatch(db);
+        chunk.forEach(function (w) {
+          if (w.type === 'set') batch.set(doc(cloudCollection(name), w.id), w.data);
+          else batch.delete(doc(cloudCollection(name), w.id));
+        });
+        return batch.commit();
+      });
+    });
+    return chain;
+  }
   function diffAndPush(name, currentArr) {
     if (!cloudUser) return Promise.resolve();
     var lastArr = lastSynced[name];
@@ -229,27 +252,32 @@ import {
     (lastArr || []).forEach(function (x) { lastById[x.id] = x; });
     var currentById = {};
     currentArr.forEach(function (x) { currentById[x.id] = x; });
-    var batch = writeBatch(db);
-    var writes = 0;
+    var writes = [];
     currentArr.forEach(function (item) {
       var prev = lastById[item.id];
-      if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) {
-        batch.set(doc(cloudCollection(name), item.id), item);
-        writes++;
-      }
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) writes.push({ type: 'set', id: item.id, data: item });
     });
     (lastArr || []).forEach(function (item) {
-      if (!currentById[item.id]) { batch.delete(doc(cloudCollection(name), item.id)); writes++; }
+      if (!currentById[item.id]) writes.push({ type: 'delete', id: item.id });
     });
-    if (writes === 0) { lastSynced[name] = currentArr.map(function (x) { return Object.assign({}, x); }); return Promise.resolve(); }
-    return batch.commit().then(function () {
+    if (writes.length === 0) { lastSynced[name] = currentArr.map(function (x) { return Object.assign({}, x); }); return Promise.resolve(); }
+    return commitWritesInChunks(name, writes).then(function () {
       lastSynced[name] = currentArr.map(function (x) { return Object.assign({}, x); });
     });
   }
+  // 每個 collection 各自一條隊伍，同一個 collection 同時間只會有一個同步請求真的在跑——
+  // 不然快速連續存檔（例如手滑連點兩次、或短時間內編輯又刪除）會同時發出好幾個 diffAndPush，
+  // 各自根據呼叫當下的 lastSynced 算出差異，最後完成的那個 commit 有可能用比較舊的內容把
+  // 比較新的內容蓋掉。排進同一條隊伍、上一個 settle 了才輪到下一個執行，且執行時才去讀當下
+  // 最新的 state，能確保呼叫順序不會影響最終寫進雲端的結果。
+  var syncQueue = { records: Promise.resolve(), categories: Promise.resolve() };
   function queueCloudSync(name) {
     if (!cloudUser || applyingRemoteChange) return;
-    var arr = name === 'records' ? state.records : state.categories;
-    diffAndPush(name, arr).catch(function (e) { console.error('cloud sync (' + name + ') failed', e); showToast('雲端同步失敗，稍後會自動重試'); });
+    syncQueue[name] = syncQueue[name].catch(function () {}).then(function () {
+      if (!cloudUser || applyingRemoteChange) return;
+      var arr = name === 'records' ? state.records : state.categories;
+      return diffAndPush(name, arr).catch(function (e) { console.error('cloud sync (' + name + ') failed', e); showToast('雲端同步失敗，稍後會自動重試'); });
+    });
   }
 
   // 注意：listener 一定要等「搬遷這件事已經有結論」之後才能開始掛，不然雲端第一次讀到的
@@ -375,16 +403,12 @@ import {
       var pushLocalOnly = function (name, current, cloudArr) {
         var cloudById = {};
         cloudArr.forEach(function (x) { cloudById[x.id] = x; });
-        var batch = writeBatch(db);
-        var writes = 0;
+        var writes = [];
         current.forEach(function (item) {
           var prev = cloudById[item.id];
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) {
-            batch.set(doc(cloudCollection(name), item.id), item);
-            writes++;
-          }
+          if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) writes.push({ type: 'set', id: item.id, data: item });
         });
-        return writes === 0 ? Promise.resolve() : batch.commit();
+        return commitWritesInChunks(name, writes);
       };
       var loginPushes = [pushLocalOnly('records', state.records, cloudRecords)];
       if (!skipCategoryPush) loginPushes.push(pushLocalOnly('categories', state.categories, cloudCategories));
@@ -1681,7 +1705,12 @@ import {
         location.reload();
       };
       if (cloudUser) {
-        Promise.all([diffAndPush('records', []), diffAndPush('categories', [])]).then(afterClear).catch(afterClear);
+        // 只有雲端真的確認刪除成功才清本機——失敗就保留本機資料，不能讓使用者以為清除完成了，
+        // 結果雲端其實還在，之後同步回來時舊資料又跑出來，變成「清除了但沒清乾淨」的詭異狀態。
+        Promise.all([diffAndPush('records', []), diffAndPush('categories', [])]).then(afterClear).catch(function (e) {
+          console.error('清除雲端資料失敗', e);
+          showToast('清除雲端資料失敗，本機資料還保留著，請檢查網路連線後再試一次');
+        });
       } else {
         afterClear();
       }
