@@ -12,6 +12,7 @@
       ".firebaserc",
       "**/.*",
       "*.md",
+      "*.log",
       "**/node_modules/**"
     ]
   },
