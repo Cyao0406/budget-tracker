@@ -5,7 +5,7 @@ import {
 } from './firebase-config.js';
 import {
   WEEKDAY, uid, debounce, pad2, toKey, fromKey, addDays, addMonths, addYears,
-  startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear,
+  startOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear,
   isSameDay, formatMoney, shortDate, formatTime, escapeHtml
 } from './utils.js';
 import { stageImportCsv } from './csv.js';
@@ -119,6 +119,10 @@ import { stageImportCsv } from './csv.js';
     { name: '其他收入', colorVar: '--series-4', icon: '💵', keywords: [], fallback: true }
   ];
 
+  // 定義「沒有套用任何進階篩選條件」長什麼樣子，只寫一份——state 初始值跟「清除篩選條件」
+  // 按鈕都呼叫這個，之後如果要多加篩選欄位，只要改這裡一個地方，不會漏改到其中一處。
+  function emptySearchFilters() { return { amountMin: null, amountMax: null, dateFrom: null, dateTo: null }; }
+
   // ---------- state ----------
   var state = {
     records: [],
@@ -136,7 +140,7 @@ import { stageImportCsv } from './csv.js';
     editingRecordId: null,
     editRecordType: 'expense',
     searchQuery: '',
-    searchFilters: { amountMin: null, amountMax: null, dateFrom: null, dateTo: null },
+    searchFilters: emptySearchFilters(),
     activeTab: 'input',
     calendarTabMonth: new Date(),
     calendarSelectedDay: null,
@@ -245,9 +249,16 @@ import { stageImportCsv } from './csv.js';
   // 比較新的內容蓋掉。排進同一條隊伍、上一個 settle 了才輪到下一個執行，且執行時才去讀當下
   // 最新的 state，能確保呼叫順序不會影響最終寫進雲端的結果。
   var syncQueue = { records: Promise.resolve(), categories: Promise.resolve() };
+  // 任何會寫雲端的動作都要走這個隊列，不能只有 queueCloudSync 排、其他寫入路徑（登入搬遷、
+  // 一般登入的 pushLocalOnly、清除所有資料）直接呼叫 diffAndPush/commitWritesInChunks——
+  // 不然序列化只保護到一半，這些沒排隊的路徑還是可能跟排隊中的寫入互相競速、蓋掉彼此。
+  function enqueueSync(name, taskFn) {
+    syncQueue[name] = syncQueue[name].catch(function () {}).then(taskFn);
+    return syncQueue[name];
+  }
   function queueCloudSync(name) {
     if (!cloudUser || applyingRemoteChange) return;
-    syncQueue[name] = syncQueue[name].catch(function () {}).then(function () {
+    enqueueSync(name, function () {
       if (!cloudUser || applyingRemoteChange) return;
       var arr = name === 'records' ? state.records : state.categories;
       return diffAndPush(name, arr).catch(function (e) { console.error('cloud sync (' + name + ') failed', e); showToast('雲端同步失敗，稍後會自動重試'); });
@@ -318,7 +329,10 @@ import { stageImportCsv } from './csv.js';
         }
         lastSynced.records = [];
         lastSynced.categories = [];
-        Promise.all([diffAndPush('categories', state.categories), diffAndPush('records', state.records)]).then(function () {
+        Promise.all([
+          enqueueSync('categories', function () { return diffAndPush('categories', state.categories); }),
+          enqueueSync('records', function () { return diffAndPush('records', state.records); })
+        ]).then(function () {
           showToast('已上傳到雲端');
           startCloudListeners();
         }).catch(function (e) {
@@ -335,8 +349,21 @@ import { stageImportCsv } from './csv.js';
       // 的分類，完全不要把預設值推上去，才不會疊出「App 預設 + 雲端原本」的重複。
       var skipCategoryPush = categoriesFreshlySeeded && cloudCategories.length > 0;
       if (skipCategoryPush) {
+        // 整批換成雲端分類之前，先把本機紀錄裡指向「即將被捨棄的本機分類 id」的 categoryId
+        // 用 type+name 配對改成對應的雲端分類 id——不然這些紀錄會變成找不到分類的孤兒
+        // （畫面上會顯示「已刪除分類」）。同名的分類接得上，本機真的有、雲端沒有同名對應的
+        // 少數情況接不上，但至少不會不做這一步、讓原本接得上的也一起變孤兒。
+        var cloudByKeyForSkip = {};
+        cloudCategories.forEach(function (c) { cloudByKeyForSkip[c.type + '::' + c.name] = c; });
+        state.categories.forEach(function (localCat) {
+          var match = cloudByKeyForSkip[localCat.type + '::' + localCat.name];
+          if (match && match.id !== localCat.id) {
+            state.records.forEach(function (r) { if (r.categoryId === localCat.id) r.categoryId = match.id; });
+          }
+        });
         state.categories = cloudCategories.map(function (c) { return Object.assign({}, c); });
         localStorage.setItem(STORAGE.categories, JSON.stringify(state.categories));
+        localStorage.setItem(STORAGE.records, JSON.stringify(state.records));
       }
 
       // 分類重複的根本成因：如果本機這時候的分類清單（不管什麼原因）跟雲端已有的分類
@@ -374,18 +401,24 @@ import { stageImportCsv } from './csv.js';
       // 這個時間點沒辦法區分「本機沒有這筆是因為使用者在本機刪掉了」還是「這筆是別的裝置已經
       // 同步上去、這台裝置還沒同步到過」，誤判成前者去刪雲端資料的風險太高。真的在本機刪除的
       // 東西，listener 開始監聽後雲端版本會自動同步回本機——只是慢一輪生效，不是資料遺失。
-      var pushLocalOnly = function (name, current, cloudArr) {
-        var cloudById = {};
-        cloudArr.forEach(function (x) { cloudById[x.id] = x; });
-        var writes = [];
-        current.forEach(function (item) {
-          var prev = cloudById[item.id];
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) writes.push({ type: 'set', id: item.id, data: item });
+      // 排進隊列的 task 要等輪到自己才執行，current 故意在 task 裡才去讀 state.records/
+      // state.categories（不是呼叫當下就捕捉起來），這樣不管排隊等了多久，實際送出的一定是
+      // 執行當下最新的資料，不會因為佇列裡排在前面的東西改了 state 而送出過期的內容。
+      var pushLocalOnly = function (name, cloudArr) {
+        return enqueueSync(name, function () {
+          var current = name === 'records' ? state.records : state.categories;
+          var cloudById = {};
+          cloudArr.forEach(function (x) { cloudById[x.id] = x; });
+          var writes = [];
+          current.forEach(function (item) {
+            var prev = cloudById[item.id];
+            if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) writes.push({ type: 'set', id: item.id, data: item });
+          });
+          return commitWritesInChunks(name, writes);
         });
-        return commitWritesInChunks(name, writes);
       };
-      var loginPushes = [pushLocalOnly('records', state.records, cloudRecords)];
-      if (!skipCategoryPush) loginPushes.push(pushLocalOnly('categories', state.categories, cloudCategories));
+      var loginPushes = [pushLocalOnly('records', cloudRecords)];
+      if (!skipCategoryPush) loginPushes.push(pushLocalOnly('categories', cloudCategories));
       Promise.all(loginPushes).then(startCloudListeners).catch(function (e) {
         console.error('login sync reconcile failed', e);
         startCloudListeners();
@@ -523,7 +556,7 @@ import { stageImportCsv } from './csv.js';
   // ---------- DOM refs ----------
   var els = {};
   function cacheEls() {
-    ['themeToggleBtn', 'settingsBtn', 'datePrevBtn', 'dateDisplayBtn', 'dateDisplayText', 'dateNextBtn', 'todayBtn',
+    ['appLoading', 'themeToggleBtn', 'settingsBtn', 'datePrevBtn', 'dateDisplayBtn', 'dateDisplayText', 'dateNextBtn', 'todayBtn',
       'calendarPopup', 'calPrevMonth', 'calNextMonth', 'calMonthLabel', 'calendarGrid', 'periodTabs',
       'periodRangeLabel', 'reportPrevBtn', 'reportNextBtn', 'statExpense', 'statIncome', 'statBalance', 'pieChart', 'chartEmpty', 'chartTooltip', 'chartLegend',
       'quickAddForm', 'quickInput', 'addBtn', 'parsePreview', 'parseAmount', 'parseNote', 'parseCategoryChip',
@@ -1455,7 +1488,12 @@ import { stageImportCsv } from './csv.js';
     function bindAmountFilterInput(input, key) {
       input.addEventListener('input', function () {
         var v = input.value.trim();
-        state.searchFilters[key] = v === '' ? null : parseFloat(v);
+        var n = parseFloat(v);
+        // isNaN 防護：正常透過 number input 打字瀏覽器會擋掉無效字元，但貼上/IME 組字過程
+        // 中途、或用程式改 .value 再觸發 input 事件，還是可能讓 v 變成解析不出數字的字串。
+        // 沒防護的話 amountMin/amountMax 會變成 NaN，hasActiveSearchFilters() 判斷成「有篩選」
+        // 但實際比較 r.amount < NaN 恆為 false，篩選條件形同虛設，畫面上卻顯示成正在篩選中。
+        state.searchFilters[key] = (v === '' || isNaN(n)) ? null : n;
         debouncedRenderCalendarTab();
       });
     }
@@ -1470,7 +1508,7 @@ import { stageImportCsv } from './csv.js';
     bindDateFilterInput(els.searchDateFrom, 'dateFrom');
     bindDateFilterInput(els.searchDateTo, 'dateTo');
     els.searchAdvClearBtn.addEventListener('click', function () {
-      state.searchFilters = { amountMin: null, amountMax: null, dateFrom: null, dateTo: null };
+      state.searchFilters = emptySearchFilters();
       els.searchAmountMin.value = ''; els.searchAmountMax.value = '';
       els.searchDateFrom.value = ''; els.searchDateTo.value = '';
       renderCalendarTab();
@@ -1618,7 +1656,14 @@ import { stageImportCsv } from './csv.js';
       if (cloudUser) {
         // 只有雲端真的確認刪除成功才清本機——失敗就保留本機資料，不能讓使用者以為清除完成了，
         // 結果雲端其實還在，之後同步回來時舊資料又跑出來，變成「清除了但沒清乾淨」的詭異狀態。
-        Promise.all([diffAndPush('records', []), diffAndPush('categories', [])]).then(afterClear).catch(function (e) {
+        // 排進 enqueueSync 隊列而不是直接呼叫 diffAndPush：不然如果使用者剛好在按下清除前一刻
+        // 才編輯過一筆紀錄，那筆存檔的同步跟這裡的清除是各自獨立發出的兩個請求，誰先送到伺服器
+        // 誰就贏，有可能清除反而沒清乾淨（剛編輯的那筆同步晚到，把清除蓋掉）。排進同一條隊列，
+        // 保證一定是「先前排隊中的存檔全部做完」之後，清除才會執行。
+        Promise.all([
+          enqueueSync('records', function () { return diffAndPush('records', []); }),
+          enqueueSync('categories', function () { return diffAndPush('categories', []); })
+        ]).then(afterClear).catch(function (e) {
           console.error('清除雲端資料失敗', e);
           showToast('清除雲端資料失敗，本機資料還保留著，請檢查網路連線後再試一次');
         });
@@ -1799,7 +1844,7 @@ import { stageImportCsv } from './csv.js';
     function hideAppLoading() {
       if (loadingHidden) return;
       loadingHidden = true;
-      var el = document.getElementById('appLoading');
+      var el = els.appLoading;
       if (!el) return;
       el.classList.add('app-loading-hide');
       setTimeout(function () { el.remove(); }, 300);

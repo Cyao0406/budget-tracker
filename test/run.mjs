@@ -161,6 +161,16 @@ await test('stageOwnFormatCsv 有效/無效資料正確分類', function () {
   assert.equal(result.errorCount, 2);
   assert.equal(result.recordsToAdd[0].amount, 100);
 });
+await test('stageOwnFormatCsv 解開匯出時加的公式注入防護單引號', function () {
+  // exportCsv 為了防公式注入，欄位開頭是 =/+/-/@ 時會加一個單引號前綴。匯入要能把這個
+  // 單引號解開，不然自己匯出的備份再匯入回來，備註/分類名稱就會永久多一個引號。
+  var rows = parseCsvText("date,type,category,amount,note\n2026-08-01,expense,餐飲,100,\"'=SUM(A1:A10)\"\n2026-08-02,expense,'開頭本來就有引號,50,note\n");
+  var cats = [];
+  var result = stageOwnFormatCsv(rows, cats);
+  assert.equal(result.recordsToAdd.length, 2);
+  assert.equal(result.recordsToAdd[0].note, '=SUM(A1:A10)', '引號+公式字元開頭要被解開');
+  assert.equal(cats.find(function (c) { return c.id === result.recordsToAdd[1].categoryId; }).name, "'開頭本來就有引號", '引號後面不是公式字元就不該被動到');
+});
 await test('stageMoneyNoteCsv 分類對照與收支類型判斷', function () {
   var rows = parseCsvText('#CATEGORIES\nheader\n1,飲食費,,,0\n#DAILY_DATAS\nheader\n2026-08-01,150,午餐,1,0,2026-08-01T12:00:00\n');
   var cats = [];

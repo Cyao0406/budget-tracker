@@ -87,13 +87,21 @@ export function normalizeImportDate(str) {
 // 紀錄一律是非負金額 + type 欄位分支出/收入，負數金額不符合資料模型。
 export function isValidImportAmount(n) { return isFinite(n) && n >= 0; }
 
+// exportCsv 為了擋 CSV 公式注入，欄位開頭是 =/+/-/@ 時會加一個單引號前綴（Excel 的慣例：
+// 顯示時自動吃掉這個引號，當純文字處理）。但匯入時如果不把這個引號解回去，這個單引號就會
+// 變成備註/分類名稱裡永久的一部分——自己匯出的備份再匯回來，內容就跟原本的不一樣了。
+// 這裡做匯出的反向操作：開頭是「引號 + =/+/-/@」就把引號拿掉，等同於 Excel 顯示時的行為。
+function stripFormulaGuard(s) {
+  return /^'[=+\-@]/.test(s) ? s.slice(1) : s;
+}
+
 export function stageOwnFormatCsv(rows, workingCategories) {
   var recordsToAdd = [], errorSamples = [], errorCount = 0;
   for (var i = 1; i < rows.length; i++) {
     var cols = rows[i];
     if (isBlankRow(cols)) continue;
     var date = normalizeImportDate(cols[0]);
-    var type = cols[1], catName = cols[2], amount = parseFloat(cols[3]), note = cols[4] || '';
+    var type = cols[1], catName = stripFormulaGuard(cols[2] || ''), amount = parseFloat(cols[3]), note = stripFormulaGuard(cols[4] || '');
     var reason = !date ? '日期無效' : (type !== 'expense' && type !== 'income') ? '收支類型無效' : !isValidImportAmount(amount) ? '金額無效' : null;
     if (reason) {
       errorCount++;
