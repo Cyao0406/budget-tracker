@@ -10,6 +10,7 @@
   2. 批次2：Google 登入 + Firestore 雲端同步整段搬到 `sync.js`。
   3. 批次3：分類管理／清理重複分類／重新套用關鍵字分類搬到 `settings.js`。
   - `app.js` 從 1880 行降到 1302 行（−31%）。每批只搬檔案、不改任何邏輯，搬移前先列好跨模組依賴清單，搬移後用 grep 確認沒有遺漏引用，再跑 `npm run lint`+`npm test`+瀏覽器手動測試過一輪才 commit，三批各自獨立 commit/deploy。`sync.js`/`settings.js` 都不 import `app.js`（依賴方向單向，`app.js` 是總機），需要的 `state`/`els`/`showToast`/`renderAll` 等協作者透過 `initCloudSync()`/`initSettingsModule()` 在 `init()` 時當參數注入，避免循環依賴。
+  - 三批做完後使用者確認過真的 Google 登入正常，接著問「要不要補測試」，答案是：**要補，但不是為了替 `state`/`bindEvents()` 那塊高風險拆分（原本規劃的批次4）鋪路，是因為 `parseQuickInput`/`guessCategory`/`getRange`/`reportFilteredRecords`/`calendarFilteredRecords` 這幾個核心記帳規則本身完全沒測試涵蓋，之後的分類預算上限/固定支出提醒/AI自動分類等功能大概率會動到這裡**。於是把這幾個函式的運算本體抽成 `logic.js`（純函式，跟 `csv.js` 同樣精神），`app.js` 保留讀 `state` 的薄殼、呼叫端簽名不變，補了 15 個單元測試（28→43 個全過）。`state`/`bindEvents()` 本身這次仍然沒有動，維持「等真的有功能逼你去動再拆」的判斷，不是忘記做。
 - 雲端登入分類重複的修法（`handleSignedIn` 偵測「本機分類是冷啟動預設值 + 雲端已有分類」就完全採用雲端版本）**使用者已用真實帳號實測過，確認無痕視窗重新登入不會再重複**。如果之後又回報類似狀況，代表還有這個修法沒涵蓋到的情境，要重新排查、不能假設是同一個成因。
 - `ROADMAP.md` 裡「時間記錄／圓餅圖篩選（現為泡泡+drill-down）／刪除復原／emoji圖示／搜尋／月趨勢圖」這幾項使用者已在 2026-08-13 確認測試通過，已經打勾。搜尋功能她特別註明「堪用但不夠完善，之後會再優化」，細節待她之後提出，不要自己猜要加什麼篩選條件。
 - **2026-08-14 的一次程式碼健檢＋四階段維護**：使用者請另一個 AI 對整個專案做程式碼審查，逐條核對後屬實居多，已依建議分四階段全部做完並部署：
@@ -45,7 +46,7 @@
 
 前端 vanilla HTML/CSS/JS，**沒有建置工具**（雲端功能用 CDN 直接載入 Firebase SDK，不是透過 bundler；瀏覽器端完全不需要 npm）。`index.html` 的 `<script>` 是 `type="module"`，`app.js` 內部仍維持一個 IIFE 包住主要邏輯、用全域 `state` 物件手動管理狀態，每次操作後呼叫對應的 `render*()` 函式重繪，不是 reactive framework；import 語句必須放在 IIFE 外層（ES module 的硬性規定）。
 
-**模組拆分現況（2026-08-14 起累積到 2026-08-18）**：`utils.js`（日期/格式化/字串等通用工具）、`csv.js`（CSV 剖析與匯入邏輯）、`changelog-data.js`（版本紀錄純資料）三個是完全不碰 `state`/DOM/Firebase 的純函式或純資料模組。`sync.js`（Google 登入 + Firestore 雲端同步）跟 `settings.js`（分類管理/清理重複分類/重新套用關鍵字分類）則是「跟畫面/state 有耦合、但邊界本來就清楚」的兩塊，2026-08-18 依 `app_architecture_optimization.md` 的方法論分批抽出（過程見上方「目前狀態」）——這兩個模組刻意設計成**不 import `app.js`**（依賴方向單向：`app.js` 是總機，import 它們；它們不反過來 import `app.js`），需要用到的 `state`/`els`/`showToast`/`renderAll`/`saveCategories` 等協作者，改成 `app.js` 在 `init()` 時透過 `initCloudSync(deps)`/`initSettingsModule(deps)` 當參數注入，不是用 import 硬綁——這樣之後不管哪個模組要單獨測試或替換，都不用擔心循環依賴。`state` 本體、渲染（report/calendar/records list/drilldown）、事件綁定 `bindEvents()`（仍有 ~340 行）這幾塊耦合最深，還留在 `app.js` 裡沒有拆——如果之後要繼續拆這塊，`CLAUDE.md` 之前就記錄過要先幫 `parseQuickInput`/`guessCategory`/`getRange` 這類邏輯補單元測試（目前 28 個測試完全沒碰這裡），不要在沒有測試護欄的情況下硬拆。
+**模組拆分現況（2026-08-14 起累積到 2026-08-18）**：`utils.js`（日期/格式化/字串等通用工具）、`csv.js`（CSV 剖析與匯入邏輯）、`changelog-data.js`（版本紀錄純資料）、`logic.js`（快速輸入解析/自動分類/期間計算/紀錄篩選的核心記帳規則）四個是完全不碰 `state`/DOM/Firebase 的純函式或純資料模組，這幾個的函式都可以直接被 `test/run.mjs` import 進來測試。`sync.js`（Google 登入 + Firestore 雲端同步）跟 `settings.js`（分類管理/清理重複分類/重新套用關鍵字分類）則是「跟畫面/state 有耦合、但邊界本來就清楚」的兩塊，2026-08-18 依 `app_architecture_optimization.md` 的方法論分批抽出（過程見上方「目前狀態」）——這兩個模組刻意設計成**不 import `app.js`**（依賴方向單向：`app.js` 是總機，import 它們；它們不反過來 import `app.js`），需要用到的 `state`/`els`/`showToast`/`renderAll`/`saveCategories` 等協作者，改成 `app.js` 在 `init()` 時透過 `initCloudSync(deps)`/`initSettingsModule(deps)` 當參數注入，不是用 import 硬綁——這樣之後不管哪個模組要單獨測試或替換，都不用擔心循環依賴。`state` 本體、渲染（report/calendar/records list/drilldown）、事件綁定 `bindEvents()`（仍有 ~340 行）這幾塊耦合最深，還留在 `app.js` 裡沒有拆——如果之後要繼續拆這塊，`CLAUDE.md` 之前就記錄過要先幫 `parseQuickInput`/`guessCategory`/`getRange` 這類邏輯補單元測試（目前 28 個測試完全沒碰這裡），不要在沒有測試護欄的情況下硬拆。
 
 ```
 index.html          頁面結構（含所有 sheet/modal 的 markup，含登入畫面 UI）
@@ -58,6 +59,10 @@ sync.js              Google 登入 + Firestore 雲端同步（diffAndPush、批�
                       搬遷/reconcile 邏輯），透過 initCloudSync(deps) 注入協作者，不 import app.js
 settings.js          分類管理（新增/改名/改圖示/改顏色/刪除/合併）、清理重複分類、重新套用關鍵字，
                       透過 initSettingsModule(deps) 注入協作者，不 import app.js
+logic.js             核心記帳規則的純函式版本：快速輸入解析、自動分類、期間計算、紀錄篩選
+                      （parseQuickInput/guessCategoryIn/getRangeFor/sortRecs/
+                      reportFilteredRecordsIn/hasActiveSearchFiltersIn/calendarFilteredRecordsIn），
+                      不碰 state/DOM；app.js 保留同名/相近名稱的薄殼呼叫這裡
 firebase-config.js   Firebase 初始化 + emulator/正式環境切換（見下方）
 firestore.rules      Firestore 安全規則（每個使用者只能讀寫自己 uid 底下的資料）
 firebase.json        Firebase CLI / emulator 設定
