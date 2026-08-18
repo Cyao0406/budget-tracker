@@ -2,6 +2,10 @@
 
 給 Claude Code 用的專案導覽。每次在這個目錄啟動時會自動讀取，目標是不用重新探索就能直接開始改東西。
 
+## 開始工作前
+
+如果 `docs/PROJECT_STATE.md` 存在，**先讀它再繼續**，不用重新調查它裡面已經記錄過的工作（這個檔案是用 `/checkpoint` 這個 skill 在使用者要清 context 前手動產生的，代表接續一段中斷的工作，不是每次都會有）。這個專案的模組拆分較細（`app.js`/`sync.js`/`settings.js`/`logic.js`/`csv.js` 等），`PROJECT_STATE.md` 裡如果有記錄「目前在改哪個模組、依賴清單列到哪」，務必照著繼續，不要因為沒印象就重新掃一次全部檔案。
+
 ## 目前狀態（2026-08-18）
 
 - App 版本 **v2.9**（`app.js` 的 `CURRENT_VERSION`），詳細沿革見 [CHANGELOG.md](CHANGELOG.md)。v2.9 是針對 v2.8 那批改動做的一次嚴格複查（用 8 個角度分別派 agent 重新審查），修掉幾個沒發現的邊界情況：清除資料/登入同步補齊排隊機制、CSV 公式注入防護匯入匯出不對稱、`skipCategoryPush` 沒 remap 紀錄的 categoryId、搜尋金額篩選缺 NaN 防護、日曆週六顏色借用分類識別色。
