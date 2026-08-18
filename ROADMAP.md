@@ -67,6 +67,6 @@
 ## 四、技術債／內部改善（不影響使用者體感，但值得做）
 
 - [ ] **CSV 匯入格式做成可擴充架構**：現在 `importMoneyNoteCsv()` 是寫死認 MoneyNote 格式，之後如果還要支援別的記帳 App（AndroMoney、CWMoney 等）建議抽成「格式偵測 + parser 註冊」的架構，不要每次都複製一份新函式
-- [ ] **基本自動化測試**：目前所有驗證都是手動用 `javascript_tool` 操作 DOM 完成，沒有留下可重跑的測試檔。功能持續變多之後建議至少把核心的 `parseQuickInput`／`guessCategory`／CSV 解析邏輯抽出來寫成幾個純函式單元測試（不需要引入完整測試框架，一個簡單的 assert 腳本也夠用）
+- [x] **基本自動化測試**（2026-08-14 完成）：拆出 `utils.js`/`csv.js` 純函式模組時一併補上 `test/run.mjs`，框架free、`npm test` 執行，目前 28 個測試涵蓋日期運算/格式化/CSV 解析與匯入邏輯。`parseQuickInput`／`guessCategory` 因為還跟 `state`/DOM 綁在一起留在 `app.js`，沒有納入這批測試，之後如果要測要先評估能不能抽成純函式。
 - [ ] **Service worker cache 版本化**：`sw.js` 的 `CACHE_NAME` 目前是手動改字串才會強制更新快取，可以自動化（例如用 build 時間戳）避免使用者卡在舊版本
 - [ ] **色彩系統可及性複查**：`--pastel-*` 這組是使用者自選的裝飾色，沒有跑過完整的 CVD 驗證（`--series-*` 那組有），純色票夠用但如果之後圖表也要用到 pastel 色，要先過一次驗證
