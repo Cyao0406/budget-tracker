@@ -2,9 +2,14 @@
 
 給 Claude Code 用的專案導覽。每次在這個目錄啟動時會自動讀取，目標是不用重新探索就能直接開始改東西。
 
-## 目前狀態（2026-08-14）
+## 目前狀態（2026-08-18）
 
 - App 版本 **v2.9**（`app.js` 的 `CURRENT_VERSION`），詳細沿革見 [CHANGELOG.md](CHANGELOG.md)。v2.9 是針對 v2.8 那批改動做的一次嚴格複查（用 8 個角度分別派 agent 重新審查），修掉幾個沒發現的邊界情況：清除資料/登入同步補齊排隊機制、CSV 公式注入防護匯入匯出不對稱、`skipCategoryPush` 沒 remap 紀錄的 categoryId、搜尋金額篩選缺 NaN 防護、日曆週六顏色借用分類識別色。
+- **2026-08-18 架構重構（無使用者可見行為變動，純內部拆分，不算版本更新）**：依照使用者提供的 `app_architecture_optimization.md` 分層方法論，掃描現況後只挑「已經有清楚邊界」的三塊分批抽出獨立模組（過度分層、幫還沒做的功能預先蓋空殼都刻意不做，理由詳見下方「技術架構」）：
+  1. 批次1：`CURRENT_VERSION`/`CHANGELOG` 純資料搬到 `changelog-data.js`。
+  2. 批次2：Google 登入 + Firestore 雲端同步整段搬到 `sync.js`。
+  3. 批次3：分類管理／清理重複分類／重新套用關鍵字分類搬到 `settings.js`。
+  - `app.js` 從 1880 行降到 1302 行（−31%）。每批只搬檔案、不改任何邏輯，搬移前先列好跨模組依賴清單，搬移後用 grep 確認沒有遺漏引用，再跑 `npm run lint`+`npm test`+瀏覽器手動測試過一輪才 commit，三批各自獨立 commit/deploy。`sync.js`/`settings.js` 都不 import `app.js`（依賴方向單向，`app.js` 是總機），需要的 `state`/`els`/`showToast`/`renderAll` 等協作者透過 `initCloudSync()`/`initSettingsModule()` 在 `init()` 時當參數注入，避免循環依賴。
 - 雲端登入分類重複的修法（`handleSignedIn` 偵測「本機分類是冷啟動預設值 + 雲端已有分類」就完全採用雲端版本）**使用者已用真實帳號實測過，確認無痕視窗重新登入不會再重複**。如果之後又回報類似狀況，代表還有這個修法沒涵蓋到的情境，要重新排查、不能假設是同一個成因。
 - `ROADMAP.md` 裡「時間記錄／圓餅圖篩選（現為泡泡+drill-down）／刪除復原／emoji圖示／搜尋／月趨勢圖」這幾項使用者已在 2026-08-13 確認測試通過，已經打勾。搜尋功能她特別註明「堪用但不夠完善，之後會再優化」，細節待她之後提出，不要自己猜要加什麼篩選條件。
 - **2026-08-14 的一次程式碼健檢＋四階段維護**：使用者請另一個 AI 對整個專案做程式碼審查，逐條核對後屬實居多，已依建議分四階段全部做完並部署：
@@ -38,21 +43,28 @@
 
 ## 技術架構
 
-前端 vanilla HTML/CSS/JS，**沒有建置工具**（雲端功能用 CDN 直接載入 Firebase SDK，不是透過 bundler；瀏覽器端完全不需要 npm）。`index.html` 的 `<script>` 是 `type="module"`，`app.js` 內部仍維持一個 IIFE 包住主要邏輯、用全域 `state` 物件手動管理狀態，每次操作後呼叫對應的 `render*()` 函式重繪，不是 reactive framework；import 語句必須放在 IIFE 外層（ES module 的硬性規定）。2026-08-14 把「不碰 state/DOM/Firebase 的純函式」拆成 `utils.js`（日期/格式化/字串等通用工具）跟 `csv.js`（CSV 剖析與匯入的解析/驗證邏輯）兩個獨立模組，`app.js` 用 `import` 引用；`state`、渲染、事件綁定、雲端同步這些跟畫面/state 緊密耦合的部分還是留在 `app.js` 裡，沒有勉強拆開——這幾塊互相牽動很深，硬拆風險比好處大，之後如果要繼續拆，先確保有測試涵蓋再動。
+前端 vanilla HTML/CSS/JS，**沒有建置工具**（雲端功能用 CDN 直接載入 Firebase SDK，不是透過 bundler；瀏覽器端完全不需要 npm）。`index.html` 的 `<script>` 是 `type="module"`，`app.js` 內部仍維持一個 IIFE 包住主要邏輯、用全域 `state` 物件手動管理狀態，每次操作後呼叫對應的 `render*()` 函式重繪，不是 reactive framework；import 語句必須放在 IIFE 外層（ES module 的硬性規定）。
+
+**模組拆分現況（2026-08-14 起累積到 2026-08-18）**：`utils.js`（日期/格式化/字串等通用工具）、`csv.js`（CSV 剖析與匯入邏輯）、`changelog-data.js`（版本紀錄純資料）三個是完全不碰 `state`/DOM/Firebase 的純函式或純資料模組。`sync.js`（Google 登入 + Firestore 雲端同步）跟 `settings.js`（分類管理/清理重複分類/重新套用關鍵字分類）則是「跟畫面/state 有耦合、但邊界本來就清楚」的兩塊，2026-08-18 依 `app_architecture_optimization.md` 的方法論分批抽出（過程見上方「目前狀態」）——這兩個模組刻意設計成**不 import `app.js`**（依賴方向單向：`app.js` 是總機，import 它們；它們不反過來 import `app.js`），需要用到的 `state`/`els`/`showToast`/`renderAll`/`saveCategories` 等協作者，改成 `app.js` 在 `init()` 時透過 `initCloudSync(deps)`/`initSettingsModule(deps)` 當參數注入，不是用 import 硬綁——這樣之後不管哪個模組要單獨測試或替換，都不用擔心循環依賴。`state` 本體、渲染（report/calendar/records list/drilldown）、事件綁定 `bindEvents()`（仍有 ~340 行）這幾塊耦合最深，還留在 `app.js` 裡沒有拆——如果之後要繼續拆這塊，`CLAUDE.md` 之前就記錄過要先幫 `parseQuickInput`/`guessCategory`/`getRange` 這類邏輯補單元測試（目前 28 個測試完全沒碰這裡），不要在沒有測試護欄的情況下硬拆。
 
 ```
 index.html          頁面結構（含所有 sheet/modal 的 markup，含登入畫面 UI）
 style.css            樣式，含 CSS 變數（design tokens）
-app.js               主要邏輯：state、渲染、事件綁定、雲端同步層、CRUD（純函式部分已拆到 utils.js/csv.js）
+app.js               主要邏輯：state、渲染、事件綁定、CRUD（雲端同步/分類設定/版本資料/CSV解析已拆到下面幾個模組）
 utils.js             純函式工具（日期運算、格式化、escapeHtml、debounce……），不碰 state/DOM
 csv.js               CSV 剖析＋匯入的解析/驗證/暫存邏輯（stageImportCsv 等），不碰 state/DOM
+changelog-data.js    CURRENT_VERSION + CHANGELOG，純資料沒有邏輯
+sync.js              Google 登入 + Firestore 雲端同步（diffAndPush、批次分批、同步佇列序列化、
+                      搬遷/reconcile 邏輯），透過 initCloudSync(deps) 注入協作者，不 import app.js
+settings.js          分類管理（新增/改名/改圖示/改顏色/刪除/合併）、清理重複分類、重新套用關鍵字，
+                      透過 initSettingsModule(deps) 注入協作者，不 import app.js
 firebase-config.js   Firebase 初始化 + emulator/正式環境切換（見下方）
 firestore.rules      Firestore 安全規則（每個使用者只能讀寫自己 uid 底下的資料）
 firebase.json        Firebase CLI / emulator 設定
 manifest.json        PWA manifest
-sw.js                Service worker（快取策略見下方「已知眉角」，ASSETS 清單要包含 utils.js/csv.js）
+sw.js                Service worker（快取策略見下方「已知眉角」，ASSETS 清單要包含所有上述 .js 模組）
 icons/               PWA 圖示（192/512/maskable，用 PowerShell + System.Drawing 產生）
-package.json         只有 "type":"module"，讓 Node 能把 utils.js/csv.js 當 ES module 載入來測試；
+package.json         只有 "type":"module"，讓 Node 能把 utils.js/csv.js 等模組當 ES module 載入來測試；
                       沒有任何 npm 依賴，瀏覽器不會讀這個檔案，跟正式站部署方式無關
 test/run.mjs         最小化單元測試（`npm test` 或 `node test/run.mjs`），只測 utils.js/csv.js
                       這種純函式，不需要測試框架；`npm run lint` 是 `node --check` 這種語法檢查
@@ -79,6 +91,8 @@ VENDOR_RISK.md       Firebase 等第三方服務的風險與退場計畫（政�
 - **共用元件**：`buildRecordRow(r)`（單筆紀錄的 DOM）+ `renderGroupedRecordList(container, recs, emptyMsg)`（依日期分組、永遠顯示日期標籤）是日曆分頁跟分類 drill-down 頁共用的渲染邏輯，改任何一筆紀錄的顯示樣式只要改這裡。
 
 ## 雲端同步架構
+
+**程式碼位置（2026-08-18 起）：** 這一節講的邏輯全部在 `sync.js`，不在 `app.js` 裡了。`app.js` 只在 `init()` 呼叫一次 `initCloudSync({ state, els, STORAGE, showToast, renderAll, categoriesFreshlySeeded })` 注入協作者，之後就是呼叫 `sync.js` export 出來的 `queueCloudSync`/`enqueueSync`/`diffAndPush`/`signInGoogle`/`signOutCloud`，還有讀取 `sync.js` export 的 `cloudUser`（ES module live binding，`sync.js` 內部重新賦值時 `app.js` 讀到的值會自動同步更新，不用額外包 getter）。
 
 **設計原則：** localStorage 永遠是「畫面立刻看到」的來源；Firestore 是背景同步層，不影響未登入時的行為。這樣不用把每個 CRUD 呼叫點都改成 async Firestore 呼叫——利用一個既有的事實：**所有**會修改 `state.records`/`state.categories` 的地方，最後都會呼叫 `saveRecords()`/`saveCategories()`（唯一例外是 `resetDataBtn`，已個別處理），所以只要在這兩個函式尾端掛一個 `queueCloudSync()` 就能涵蓋全部寫入路徑，不用改動任何既有的 UI handler。
 
