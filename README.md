@@ -2,7 +2,7 @@
 
 快速輸入自動分類的個人記帳 PWA。可在 iPhone / iPad / 筆電瀏覽器直接使用，也能「加入主畫面」變成類 App 圖示。
 
-**線上網址：https://budget-tracker-8edd1.firebaseapp.com/**（部署在 Firebase Hosting，登入雲端同步一定要用這個網址，GitHub Pages 那份僅保留原始碼備份用）
+**線上網址：https://budget-tracker-8edd1.firebaseapp.com/ **（部署在 Firebase Hosting，登入雲端同步一定要用這個網址，GitHub Pages 那份僅保留原始碼備份用）
 
 ## 技術
 
