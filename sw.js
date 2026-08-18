@@ -1,4 +1,4 @@
-var CACHE_NAME = 'budget-app-v6';
+var CACHE_NAME = 'budget-app-v7';
 var ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ var ASSETS = [
   './app.js',
   './utils.js',
   './csv.js',
+  './changelog-data.js',
   './firebase-config.js',
   './manifest.json',
   './icons/icon-192.png',
