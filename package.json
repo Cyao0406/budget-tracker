@@ -5,6 +5,6 @@
   "description": "沒有建置工具、沒有 npm 依賴——這個檔案只放 \"type\": \"module\"，讓 Node 能正確把 utils.js / csv.js 當 ES module 載入，好讓 test/run.mjs 直接 import 真正的原始碼來測試，不用另外裝任何套件。瀏覽器不會讀這個檔案，跟正式站的部署方式完全無關。",
   "scripts": {
     "test": "node test/run.mjs",
-    "lint": "node --check app.js && node --check utils.js && node --check csv.js && node --check changelog-data.js && node --check sync.js && node --check settings.js && node --check firebase-config.js && node --check sw.js"
+    "lint": "node --check app.js && node --check utils.js && node --check csv.js && node --check changelog-data.js && node --check sync.js && node --check settings.js && node --check logic.js && node --check firebase-config.js && node --check sw.js"
   }
 }

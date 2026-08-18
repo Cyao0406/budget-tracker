@@ -1,6 +1,6 @@
-// 最小化單元測試：不用任何測試框架，直接 import 真正的原始碼（utils.js / csv.js），
+// 最小化單元測試：不用任何測試框架，直接 import 真正的原始碼（utils.js / csv.js / logic.js），
 // 對純函式的輸出做斷言。用 `npm test` 或 `node test/run.mjs` 執行。
-// 只測「不碰 DOM/state/Firebase」的純邏輯——這正是這次從 app.js 拆出 utils.js/csv.js
+// 只測「不碰 DOM/state/Firebase」的純邏輯——這正是這次從 app.js 拆出 utils.js/csv.js/logic.js
 // 的目的，讓這些邏輯能脫離瀏覽器環境單獨驗證。
 import assert from 'node:assert/strict';
 import {
@@ -12,6 +12,10 @@ import {
   parseCsvText, isBlankRow, nextColorVarIn, findOrCreateCategoryByNameIn,
   normalizeImportDate, isValidImportAmount, stageOwnFormatCsv, stageMoneyNoteCsv, stageImportCsv
 } from '../csv.js';
+import {
+  parseQuickInput, guessCategoryIn, getRangeFor, sortRecs,
+  reportFilteredRecordsIn, hasActiveSearchFiltersIn, calendarFilteredRecordsIn
+} from '../logic.js';
 
 var passed = 0, failed = 0;
 // fn 可以是同步函式，也可以回傳一個 Promise（非同步測試，例如 debounce 這種要等時間過去才能斷言的）。
@@ -193,6 +197,127 @@ await test('stageImportCsv 自動偵測 MoneyNote 格式', function () {
   var csvText = '#CATEGORIES\nheader\n1,交通費,,,0\n#DAILY_DATAS\nheader\n2026-08-01,60,公車,1,0,2026-08-01T08:00:00\n';
   var staged = stageImportCsv(csvText, []);
   assert.equal(staged.format, 'moneynote');
+});
+
+// ---------- logic.js（原本 app.js 裡的核心記帳規則，2026-08-18 拆出來補測試） ----------
+await test('parseQuickInput 抓最後一個數字當金額，其餘當備註', function () {
+  var r = parseQuickInput('早餐 全家 150');
+  assert.equal(r.amount, 150);
+  assert.equal(r.note, '早餐 全家');
+});
+await test('parseQuickInput 金額可以帶逗號/元/小數', function () {
+  assert.equal(parseQuickInput('房租 1,200元').amount, 1200);
+  assert.equal(parseQuickInput('房租 1,200元').note, '房租');
+  assert.equal(parseQuickInput('咖啡 65.5').amount, 65.5);
+});
+await test('parseQuickInput 沒有數字就沒有金額，全部當備註', function () {
+  var r = parseQuickInput('只有文字沒有金額');
+  assert.equal(r.amount, null);
+  assert.equal(r.note, '只有文字沒有金額');
+});
+await test('parseQuickInput 空字串', function () {
+  assert.deepEqual(parseQuickInput(''), { amount: null, note: '' });
+  assert.deepEqual(parseQuickInput('   '), { amount: null, note: '' });
+});
+
+await test('guessCategoryIn 關鍵字比對命中（不分大小寫）', function () {
+  var cats = [
+    { id: 'c1', fallback: false, keywords: ['早餐', '午餐'] },
+    { id: 'c2', fallback: false, keywords: ['netflix', 'spotify'] },
+    { id: 'c3', fallback: true, keywords: [] }
+  ];
+  assert.equal(guessCategoryIn('全家 早餐 150', cats).id, 'c1');
+  assert.equal(guessCategoryIn('Netflix 訂閱', cats).id, 'c2', '關鍵字比對要不分大小寫');
+});
+await test('guessCategoryIn 都沒命中就回傳 fallback 分類，不管它排在陣列哪個位置', function () {
+  var cats = [
+    { id: 'c1', fallback: false, keywords: ['早餐'] },
+    { id: 'c2', fallback: true, keywords: [] },
+    { id: 'c3', fallback: false, keywords: ['晚餐'] }
+  ];
+  assert.equal(guessCategoryIn('完全比對不到的備註', cats).id, 'c2');
+});
+await test('guessCategoryIn 跳過 fallback 分類本身的關鍵字比對', function () {
+  // fallback 分類理論上 keywords 應該是空陣列，但就算不小心填了關鍵字，
+  // 也該被當成最後手段而不是優先命中——這裡確認迴圈確實用 continue 跳過它。
+  var cats = [
+    { id: 'c1', fallback: true, keywords: ['其他'] },
+    { id: 'c2', fallback: false, keywords: ['早餐'] }
+  ];
+  assert.equal(guessCategoryIn('早餐 150', cats).id, 'c2');
+});
+
+await test('getRangeFor 月報表回傳當月第一天到最後一天', function () {
+  var range = getRangeFor(new Date(2026, 1, 15), 'month'); // 2026-02，平年28天
+  assert.equal(toKey(range[0]), '2026-02-01');
+  assert.equal(toKey(range[1]), '2026-02-28');
+});
+await test('getRangeFor 年報表回傳當年1/1到12/31', function () {
+  var range = getRangeFor(new Date(2026, 5, 1), 'year');
+  assert.equal(toKey(range[0]), '2026-01-01');
+  assert.equal(toKey(range[1]), '2026-12-31');
+});
+
+await test('sortRecs 依日期新到舊，同一天依 createdAt 新到舊', function () {
+  var recs = [
+    { id: 'a', date: '2026-01-01', createdAt: 100 },
+    { id: 'b', date: '2026-01-02', createdAt: 200 },
+    { id: 'c', date: '2026-01-01', createdAt: 300 }
+  ];
+  var sorted = sortRecs(recs).map(function (r) { return r.id; });
+  assert.deepEqual(sorted, ['b', 'c', 'a']);
+});
+await test('reportFilteredRecordsIn 依 range 篩選並依日期新到舊排序', function () {
+  var records = [
+    { id: 'r1', date: '2026-01-15', amount: 100, createdAt: 1 },
+    { id: 'r2', date: '2026-02-10', amount: 200, createdAt: 1 },
+    { id: 'r3', date: '2026-02-20', amount: 300, createdAt: 1 }
+  ];
+  var range = getRangeFor(new Date(2026, 1, 1), 'month'); // 2026-02
+  var result = reportFilteredRecordsIn(records, range);
+  assert.deepEqual(result.map(function (r) { return r.id; }), ['r3', 'r2'], '1月的紀錄要被篩掉，2月的依日期新到舊排序');
+});
+
+await test('hasActiveSearchFiltersIn', function () {
+  var empty = { amountMin: null, amountMax: null, dateFrom: null, dateTo: null };
+  assert.equal(hasActiveSearchFiltersIn('', empty), false);
+  assert.equal(hasActiveSearchFiltersIn('  ', empty), false, '純空白不算有效搜尋字串');
+  assert.equal(hasActiveSearchFiltersIn('早餐', empty), true);
+  assert.equal(hasActiveSearchFiltersIn('', Object.assign({}, empty, { amountMin: 100 })), true);
+});
+await test('calendarFilteredRecordsIn 沒有搜尋條件時依瀏覽月份+選中的天篩選', function () {
+  var records = [
+    { id: 'r1', date: '2026-02-05', categoryId: 'c1', amount: 100, note: '早餐', createdAt: 1 },
+    { id: 'r2', date: '2026-02-05', categoryId: 'c1', amount: 200, note: '午餐', createdAt: 2 },
+    { id: 'r3', date: '2026-03-01', categoryId: 'c1', amount: 300, note: '晚餐', createdAt: 3 }
+  ];
+  var cats = [{ id: 'c1', name: '餐飲' }];
+  var emptyFilters = { amountMin: null, amountMax: null, dateFrom: null, dateTo: null };
+  var byMonth = calendarFilteredRecordsIn(records, cats, { query: '', filters: emptyFilters, month: new Date(2026, 1, 1), selectedDay: null });
+  assert.deepEqual(byMonth.map(function (r) { return r.id; }), ['r2', 'r1'], '只留2月的紀錄，同一天內依 createdAt 新到舊排序');
+  var byDay = calendarFilteredRecordsIn(records, cats, { query: '', filters: emptyFilters, month: new Date(2026, 1, 1), selectedDay: '2026-02-05' });
+  assert.equal(byDay.length, 2);
+});
+await test('calendarFilteredRecordsIn 有搜尋字串時忽略月份範圍，比對分類名/備註/金額', function () {
+  var records = [
+    { id: 'r1', date: '2026-01-01', categoryId: 'c1', amount: 100, note: '早餐', createdAt: 1 },
+    { id: 'r2', date: '2026-06-01', categoryId: 'c2', amount: 999, note: '', createdAt: 1 }
+  ];
+  var cats = [{ id: 'c1', name: '餐飲' }, { id: 'c2', name: '交通' }];
+  var emptyFilters = { amountMin: null, amountMax: null, dateFrom: null, dateTo: null };
+  var result = calendarFilteredRecordsIn(records, cats, { query: '餐飲', filters: emptyFilters, month: new Date(2026, 1, 1), selectedDay: null });
+  assert.deepEqual(result.map(function (r) { return r.id; }), ['r1'], '跨月份也要找得到，用分類名稱比對命中');
+});
+await test('calendarFilteredRecordsIn 金額區間篩選', function () {
+  var records = [
+    { id: 'r1', date: '2026-02-01', categoryId: 'c1', amount: 50, note: '', createdAt: 1 },
+    { id: 'r2', date: '2026-02-02', categoryId: 'c1', amount: 500, note: '', createdAt: 1 }
+  ];
+  var cats = [{ id: 'c1', name: '餐飲' }];
+  var result = calendarFilteredRecordsIn(records, cats, {
+    query: '', filters: { amountMin: 100, amountMax: null, dateFrom: null, dateTo: null }, month: new Date(2026, 1, 1), selectedDay: null
+  });
+  assert.deepEqual(result.map(function (r) { return r.id; }), ['r2']);
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

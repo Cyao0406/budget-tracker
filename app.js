@@ -1,10 +1,14 @@
 import {
   WEEKDAY, uid, debounce, pad2, toKey, fromKey, addDays, addMonths, addYears,
-  startOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear,
+  startOfWeek, startOfMonth, endOfMonth,
   isSameDay, formatMoney, shortDate, formatTime, escapeHtml
 } from './utils.js';
 import { stageImportCsv } from './csv.js';
 import { CURRENT_VERSION, CHANGELOG } from './changelog-data.js';
+import {
+  parseQuickInput, guessCategoryIn, getRangeFor, sortRecs,
+  reportFilteredRecordsIn, hasActiveSearchFiltersIn, calendarFilteredRecordsIn
+} from './logic.js';
 import {
   cloudUser, enqueueSync, diffAndPush, queueCloudSync, initCloudSync, signInGoogle, signOutCloud
 } from './sync.js';
@@ -127,32 +131,8 @@ import {
   }
 
   // ---------- parsing & auto categorize ----------
-  function parseQuickInput(text) {
-    text = (text || '').trim();
-    if (!text) return { amount: null, note: '' };
-    var tokens = text.split(/\s+/);
-    var amount = null, amountIdx = -1;
-    for (var i = tokens.length - 1; i >= 0; i--) {
-      var t = tokens[i].replace(/[,$元]/g, '');
-      if (/^\d+(\.\d+)?$/.test(t)) { amount = parseFloat(t); amountIdx = i; break; }
-    }
-    var noteTokens = tokens.slice();
-    if (amountIdx >= 0) noteTokens.splice(amountIdx, 1);
-    return { amount: amount, note: noteTokens.join(' ').trim() };
-  }
-  function guessCategory(note, type) {
-    var cats = catsOfType(type);
-    var lower = (note || '').toLowerCase();
-    for (var i = 0; i < cats.length; i++) {
-      var c = cats[i];
-      if (c.fallback) continue;
-      for (var j = 0; j < c.keywords.length; j++) {
-        var kw = c.keywords[j];
-        if (kw && lower.indexOf(kw.toLowerCase()) !== -1) return c;
-      }
-    }
-    return fallbackCat(type);
-  }
+  // 純運算本體搬到 logic.js（guessCategoryIn 等），這裡留讀 state 的薄殼，呼叫端簽名不變。
+  function guessCategory(note, type) { return guessCategoryIn(note, catsOfType(type)); }
   function effectiveCategory() {
     if (state.tempCategoryOverride) {
       var c = findCat(state.tempCategoryOverride);
@@ -165,54 +145,17 @@ import {
   // ---------- range ----------
   // 報表頁自己的期間導覽（reportDate）跟輸入分頁的日期列（selectedDate）故意分開，
   // 瀏覽報表的月份/年度不會動到輸入分頁正在記帳的那一天。
-  function getRange() {
-    var d = state.reportDate;
-    if (state.period === 'year') return [startOfYear(d), endOfYear(d)];
-    return [startOfMonth(d), endOfMonth(d)];
-  }
-  function sortRecs(recs) {
-    return recs.sort(function (a, b) { return a.date === b.date ? b.createdAt - a.createdAt : (a.date < b.date ? 1 : -1); });
-  }
-  // 報表頁用：純粹依目前選的日/週/月期間篩選，不管搜尋、不管日曆頁選了哪一天。
-  function reportFilteredRecords() {
-    var range = getRange();
-    var startKey = toKey(range[0]), endKey = toKey(range[1]);
-    return sortRecs(state.records.filter(function (r) { return r.date >= startKey && r.date <= endKey; }));
-  }
+  function getRange() { return getRangeFor(state.reportDate, state.period); }
+  // 報表頁用：純粹依目前選的期間篩選，不管搜尋、不管日曆頁選了哪一天。
+  function reportFilteredRecords() { return reportFilteredRecordsIn(state.records, getRange()); }
   // 日曆頁用：有搜尋字串或進階篩選條件時故意不限制日期範圍（搜尋的目的就是「不記得是哪一天
   // 記的，用條件找」，限制在目前瀏覽的月份反而失去搜尋的意義）；沒有任何條件時依目前瀏覽的
   // 月份，再看有沒有額外點選單一天要進一步縮小範圍。
-  function hasActiveSearchFilters() {
-    var f = state.searchFilters;
-    return !!(state.searchQuery.trim() || f.amountMin != null || f.amountMax != null || f.dateFrom || f.dateTo);
-  }
+  function hasActiveSearchFilters() { return hasActiveSearchFiltersIn(state.searchQuery, state.searchFilters); }
   function calendarFilteredRecords() {
-    var q = state.searchQuery.trim().toLowerCase();
-    var f = state.searchFilters;
-    var recs;
-    if (hasActiveSearchFilters()) {
-      recs = state.records.filter(function (r) {
-        if (q) {
-          var cat = findCat(r.categoryId);
-          var catName = cat ? cat.name.toLowerCase() : '';
-          var note = (r.note || '').toLowerCase();
-          if (note.indexOf(q) === -1 && catName.indexOf(q) === -1 && String(r.amount).indexOf(q) === -1) return false;
-        }
-        if (f.amountMin != null && r.amount < f.amountMin) return false;
-        if (f.amountMax != null && r.amount > f.amountMax) return false;
-        if (f.dateFrom && r.date < f.dateFrom) return false;
-        if (f.dateTo && r.date > f.dateTo) return false;
-        return true;
-      });
-    } else {
-      var monthStartKey = toKey(startOfMonth(state.calendarTabMonth));
-      var monthEndKey = toKey(endOfMonth(state.calendarTabMonth));
-      recs = state.records.filter(function (r) { return r.date >= monthStartKey && r.date <= monthEndKey; });
-      if (state.calendarSelectedDay) {
-        recs = recs.filter(function (r) { return r.date === state.calendarSelectedDay; });
-      }
-    }
-    return sortRecs(recs);
+    return calendarFilteredRecordsIn(state.records, state.categories, {
+      query: state.searchQuery, filters: state.searchFilters, month: state.calendarTabMonth, selectedDay: state.calendarSelectedDay
+    });
   }
   function periodLabelText() {
     var d = state.reportDate;
