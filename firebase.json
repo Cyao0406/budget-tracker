@@ -17,6 +17,11 @@
       "package.json",
       "package-lock.json",
       "test/**",
+      "e2e/**",
+      "scripts/**",
+      "playwright.config.js",
+      "playwright-report/**",
+      "test-results/**",
       "**/node_modules/**"
     ]
   },

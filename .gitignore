@@ -1,4 +1,10 @@
+.firebase/
+.repair-loop-run-*.json
+.repair-loop-frozen-tests.json
+.repair-loop-state.json
 firebase-debug.log
 firestore-debug.log
+node_modules/
+playwright-report/
+test-results/
 ui-debug.log
-.firebase/
