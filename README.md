@@ -10,7 +10,10 @@
 
 - `index.html` — 頁面結構（含登入畫面）
 - `style.css` — 樣式（淺色/深色皆支援）
-- `app.js` — 所有邏輯（資料模型、自動分類、圖表、CRUD、雲端同步）
+- `app.js` — 主要邏輯：state、渲染、事件綁定、CRUD（總機，import 下面幾個模組）
+- `utils.js` / `csv.js` / `logic.js` / `changelog-data.js` — 純函式/純資料模組（日期運算、CSV 匯入匯出、記帳規則、版本紀錄），有單元測試涵蓋
+- `sync.js` — Google 登入 + Firestore 雲端同步
+- `settings.js` — 分類管理（新增/改名/改關鍵字/改顏色/刪除、合併重複分類）
 - `firebase-config.js` — Firebase 初始化（本機自動接 emulator，正式站已填入專案 config）
 - `firestore.rules` / `firebase.json` — 雲端安全規則與 emulator 設定
 - `manifest.json` / `sw.js` / `icons/` — PWA 設定與離線快取
