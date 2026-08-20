@@ -11,6 +11,7 @@
       ".claude/**",
       ".gitignore",
       ".firebaserc",
+      "功能及介面參考資料/**",
       "**/.*",
       "*.md",
       "*.log",
