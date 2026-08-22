@@ -6,6 +6,15 @@
 
 如果 `docs/PROJECT_STATE.md` 存在，**先讀它再繼續**，不用重新調查它裡面已經記錄過的工作（這個檔案是用 `/checkpoint` 這個 skill 在使用者要清 context 前手動產生的，代表接續一段中斷的工作，不是每次都會有）。這個專案的模組拆分較細（`app.js`/`sync.js`/`settings.js`/`logic.js`/`csv.js` 等），`PROJECT_STATE.md` 裡如果有記錄「目前在改哪個模組、依賴清單列到哪」，務必照著繼續，不要因為沒印象就重新掃一次全部檔案。
 
+## 完成工作後（Obsidian 白話記錄）
+
+這個專案在 Obsidian「App Projects」vault 底下的 `01_Budget Tracker（記帳程式）` 資料夾維護兩本給使用者自己看的白話文記錄，**改完東西後自行判斷屬於哪一類、直接補一條，不用等使用者要求**：
+
+- **`99_版本更新紀錄.md`**（`C:\Users\user\iCloudDrive\iCloud~md~obsidian\App Projects\01_Budget Tracker（記帳程式）\99_版本更新紀錄.md`）：使用者感覺得到的變化（UI、功能、操作方式）。內容要跟 `CHANGELOG.md`/`CURRENT_VERSION` 版本號對齊，只有版本正式確認（使用者測試通過、要升版號）才寫，不要在功能還沒定案前先寫。**過去的內容不要動**，只在最上面加新的一節。
+- **`90_技術調整紀錄.md`**（同資料夾底下）：使用者感覺不到、但確實調整過專案內容的技術性異動（架構重構、工具/測試、文件維護、部署設定、資安修正這類）。不受版號綁定，改完就可以直接加一條，不用等升版。
+
+兩本都要用白話文寫，不寫函式名稱、程式碼細節，讓非技術背景的人也看得懂「這次動了什麼、為什麼動」；新的一律加在檔案最上面。這兩個路徑已經加進 `~/.claude/hooks/guard-write-path.ps1` 的 `$TrustedExternalRoots`（整個「App Projects」vault），Write/Edit 不會被路徑防護擋下來。
+
 ## 現況
 
 App 版本 **v2.9**（`app.js` 的 `CURRENT_VERSION`），沿革見 [CHANGELOG.md](CHANGELOG.md)。搜尋功能使用者已表示「堪用但不夠完善」，細節待她之後提出，不要自己猜篩選條件（見 [ROADMAP.md](ROADMAP.md)）。
