@@ -1231,7 +1231,17 @@ import {
         reloadedForUpdate = true;
         location.reload();
       });
+      // 上面的 reg.update() 只在分頁「載入當下」執行一次，已經開著、放著不動的分頁完全沒有
+      // 後續檢查機制（瀏覽器自己排的下一次檢查通常要等下次導覽或最多 24 小時）。額外補兩個
+      // 主動觸發時機：定期輪詢 + 分頁從背景切回前景時立刻檢查一次，兩者都只是呼叫 reg.update()，
+      // 真的抓到新版時上面的 controllerchange 監聽器會自動處理重整，不用改動那段邏輯。
       navigator.serviceWorker.register('sw.js').then(function (reg) {
+        setInterval(function () {
+          reg.update().catch(function () {});
+        }, 15 * 60 * 1000);
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') reg.update().catch(function () {});
+        });
         return reg.update().catch(function () {});
       }).catch(function () {}).then(hideAppLoading);
       setTimeout(hideAppLoading, 2500);
